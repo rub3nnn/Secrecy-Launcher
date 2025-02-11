@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<!-- Created by CodingLab |www.youtube.com/CodingLabYT-->
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8">
+    <title>PANEL - SECRECY LAUNCHER</title>
+    <!--<title> Drop Down Sidebar Menu | CodingLab </title>-->
+    <link rel="stylesheet" href="./css/index.css">
+    <link rel="stylesheet" href="./css/index2.css">
+
+    <main data-router-wrapper>
+      <section class="home-section" dara-router-view="complementos" >
+      <i class='bx bx-menu' ></i>
+      <span class="text">COMPLEMENTOS</span>
+      
+      
+    </div>
+    <ul class="cards">
+      <li>
+        <a class="card">
+          <img src="https://i.imgur.com/lcUeviB.png" class="card__image"  />
+          <div  class="card__overlay">
+            <div class="card__header">
+              <svg class="card__arc" xmlns="http://www.w3.org/2000/svg"><path /></svg>                     
+              <div class="card__header-text">
+                <h3 class="card__title">Minecraft</h3>            
+                <span class="card__title">Mini mapa mod </span>
+              </div>
+            </div>
+            <button id="sada" class="custom-btn btn-11">INSTALAR</button>
+            <script src="renderer2.js"></script>
+          </div>
+        </a>      
+      </li>
+      <li>
+        <script src="./js/renderer.js"></script>
+
+
+        <li>
+  </section>
+    </main>
+  <script>
+  let arrow = document.querySelectorAll(".arrow");
+  for (var i = 0; i < arrow.length; i++) {
+    arrow[i].addEventListener("click", (e)=>{
+   let arrowParent = e.target.parentElement.parentElement;//selecting main parent of arrow
+   arrowParent.classList.toggle("showMenu");
+    });
+  }
+  let sidebar = document.querySelector(".sidebar");
+  let sidebarBtn = document.querySelector(".bx-menu");
+  console.log(sidebarBtn);
+  sidebarBtn.addEventListener("click", ()=>{
+    sidebar.classList.toggle("close");
+  });
+  </script>
+</body>
+</html>

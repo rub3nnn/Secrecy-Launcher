@@ -1,17 +1,29 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
-<meta http-equiv="Refresh" content="1;url=http://secrecy.ml/inicio">
   <head>
     <meta charset="utf-8">
-    <title>SECRECY - CONECTANDO...</title>
-    <link rel="stylesheet" href="styleisis.css">
+    <title>COMPROBANDO ACTUALIZACIONES - SECRECY LAUNCHER</title>
+    <link rel="stylesheet" href="./css/inicio.css">
   </head>
   <body>
+    
+    <div class="loader-container" id="loader">
+      <div class="loader"></div>
+    </div>  
+    <script src="files/default/lottie-player.js"></script> <lottie-player src="files/default/inicio.json" background="transparent" speed="1" id="animacion" style="width: 100%; height: auto; display: none;" autoplay></lottie-player>
     <div class="loading-screen">
       <div class="loading-animation">
-        <img src="logo.png" alt="" class="logo">
+        <img src="./img/logo.png" alt="" class="logo">
         <div class="loading-bar"></div>
+        <span> &nbsp </span>
+        <div id="bar-container">
+          <div id="bar"></div>
+        </div>
+        <a id="desc" class="textodescarga">DESCARGANDO ACTUALIZACIÓN</a>
+        <btnModal id="btnModal">REINTENTAR</btnModal>
+        <script  src="./js/actualizar.js"></script>
       </div>
+
     </div>
   </body>
 </html>

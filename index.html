@@ -1,47 +1,396 @@
 <!DOCTYPE html>
-<html style="font-size: 16px;">
+<!-- Created by CodingLab |www.youtube.com/CodingLabYT-->
+<html lang="es" dir="ltr">
+<title>SECRECY LAUNCHER - PANEL</title>
   <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta charset="utf-8">
-    <meta name="keywords" content="">
-    <meta name="description" content="">
-    <meta name="page_type" content="np-template-header-footer-from-plugin">
-    <title>INICIANDO</title>
-    <link rel="stylesheet" href="nicepage.css" media="screen">
-<link rel="stylesheet" href="INICIANDO.css" media="screen">
-    <script class="u-script" type="text/javascript" src="jquery.js" defer=""></script>
-    <script class="u-script" type="text/javascript" src="nicepage.js" defer=""></script>
-    <meta name="generator" content="Nicepage 3.12.1, nicepage.com">
-    <link id="u-theme-google-font" rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:100,100i,300,300i,400,400i,500,500i,700,700i,900,900i|Open+Sans:300,300i,400,400i,600,600i,700,700i,800,800i">
-    
-    
-    <script type="application/ld+json">{
-		"@context": "http://schema.org",
-		"@type": "Organization",
-		"name": "Site5",
-		"url": "index.html"
-}</script>
-    <meta property="og:title" content="INICIANDO">
-    <meta property="og:type" content="website">
-    <meta name="theme-color" content="#478ac9">
-    <link rel="canonical" href="index.html">
-    <meta property="og:url" content="loading.html">
-	<meta http-equiv="Refresh" content="6;url=loading.html">
+    <meta charset="UTF-8">
+    <!--<title> Responsive Sidebar Menu  | CodingLab </title>-->
+    <link rel="stylesheet" href="./css/index.css">
+    <link rel="stylesheet" href="./css/index2.css">
+    <!-- Boxicons CDN Link -->
+<!-- Boxicons CDN Link -->
+<link href='https://unpkg.com/boxicons@2.0.7/css/boxicons.min.css' rel='stylesheet'>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
   </head>
-  <body class="u-body">
-    <section class="u-clearfix u-uploaded-video u-video u-section-1" id="sec-5143">
-      <div class="u-background-video u-expanded u-video-contain" style="">
-        <div class="embed-responsive">
-          <video class="embed-responsive-item" autoplay="autoplay" playsinline="" loop="">
-            <source src="files/13101821291.mp4" type="video/mp4">
-            <p>Parece que hay algunas incompatibilidades con tu sistema, no te preocupes estamos intentando recuperarlo.</p>
-          </video>
+<body>
+  <script src="files/default/lottie-player.js"></script>
+       <!-- The Modal -->
+       <div class="loader-container" id="loader">
+        <div class="loader"></div>
+      </div>  
+       <div id="myModal" class="modal">
+      
+        <!-- Modal content -->
+        <div class="modal-content">
+          <img class="modalImg" id="modalImg" height="220" width="510" src="">
+          <svg class="crossmark" id="cross" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+            <circle class="crossmark__circle" cx="26" cy="26" r="25" fill="none" />
+            <path class="crossmark__check " fill="none" d="M16 16 36 36 M36 16 16 36" />
+          </svg>
+          <svg class="checkmark" id="check" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+            <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+            <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+          </svg>
+          <a id="desc" class="textodescarga">DESCARGANDO</a>
+          <span id="modalTitle" style="display: inline-block; color: #ffffff; font-weight: 500;font-size: 20px; margin-left: 0px; margin-right: 0px; margin-bottom: 15px;"></span>
+          <input id="modalTextInput" type="text" style="border-radius: 15px; text-align: left; width: 100%; background-color: #242629; border-width: 0px; padding: 5px; margin-bottom: 15px;">
+          <div id="bar-container" class="hide-it">
+            <div id="bar" class="hide-it"></div>
+          </div>
+          <a id="subdesc" class="textodescarga"></a>
+          <btnModal class="hide-it" id="btnModal">ABRIR AHORA</btnModal><btnModal  id="btnCloseModal">CERRAR</btnModal><div style="margin: 0 auto; text-align: center;"><btnModal id="btnModalAccept" >ACEPTAR</btnModal><btnModal id="btnModalCancel">CANCELAR</btnModal></div>
+        </div>
+        
+
+      
+      </div>
+<div class="sidebar">
+<div class="logo-details" id="btnMenu">
+   <div class="logo_name">SECRECY LAUNCHER</div>
+   <i class='bx bx-menu' id="btn" ></i>
+</div>
+<ul class="nav-list" >
+  <li>
+    <i class='bx bx-search' ></i>
+   <input type="text" placeholder="Buscar pack..." id="searchBar">
+   <span class="tooltip">Buscar</span>
+</li>
+ <li>
+   <a id="panel">
+     <i class='bx bx-grid-alt'></i>
+     <span class="links_name">Panel</span>
+   </a>
+    <span class="tooltip">Panel</span>
+ </li>
+ <li>
+  <a onclick="packs()">
+    <i class='bx bxs-cube-alt'></i>
+    <span class="links_name ">Packs de mods</span>
+  </a>
+  <span class="tooltip">Packs de mods</span>
+</li>
+ <li id='bibl1'>
+  <a id='bibl'>
+    <i class='bx bx-library' ></i>
+    <span class="links_name ">Biblioteca</span>
+  </a>
+  <span class="tooltip">Biblioteca</span>
+</li>
+<li id="comp">
+  <a id="complementos">
+    <i class='bx bx-plug'></i>
+    <span class="links_name">Complementos</span>
+  </a>
+  <span class="tooltip">Complementos</span>
+</li>
+<li>
+  <a id="ajustes">
+    <i class='bx bx-cog' ></i>
+    <span class="links_name">Ajustes</span>
+  </a>
+  <span class="tooltip">Ajustes</span>
+</li>
+<li>
+  <a id="recargar">
+    <i class='bx bx-refresh'></i>
+    <span class="links_name">Recargar</span>
+  </a>
+  <span class="tooltip">Recargar</span>
+</li>
+<li class="profile" id="cerrarsesion">
+  <div class="profile-details">
+    <i class='bx bx-user' id="user" ></i>
+    <img id="profile" alt="profileImg">
+    <div class="name_job">
+      <text class="name" id="username">${username}</text>
+      <div class="job"></div>
+    </div>
+  </div>
+  
+</li>
+</ul>
+</div>
+<section class="home-section" id="secPacks" style="margin-bottom: 60px;">
+  <span class="text">PACKS DE MODS</span>
+  <div class="servers" id="listaserverssticky"></div>
+  <div class="servers" id="listaservers">
+  </div>
+</section>
+<section class="home-section fondo" id="secPanel">
+  
+      <span class="text" style="display: none;">PANEL</span>
+      
+    </div>
+    <div id="installed"></div>
+    
+
+    <div class="navbar">
+      <div id="versionsbutton"style="width: 20%; display: inline-block; margin:auto; cursor: default;" onclick="versiones()"> 
+        <div style="display: flex; justify-content: center">
+          <span class="text" id="mineversion" style="margin: 0%; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; ">Sin seleccionar</span>
+          <i class='bx bx-chevron-up' style="font-size: 35px; color: #ffffff; margin-right: -7px;"></i>
         </div>
       </div>
-      <div class="u-clearfix u-sheet u-sheet-1"></div>
-    </section>
+  <button id="gstartbutton" class="botonmine" onclick="launchMine()">JUGAR</button>
+  <div style="width: 25%; display: inline-block; margin:auto; cursor: default;" onclick="changemineusername()"> 
+    <div style="display: flex; justify-content: left;">
+      <div id="mineusername" style="display: flex; justify-content: center;width: 80%;">
+      </div>
+      
+    </div>
+  </div>
+  
+</div>
+<div class="navbar" id="mineloadercontainer" style="display: none; transition: all .2s ease-in-out; ;margin-bottom: 20px;height: 60px; z-index: 19; animation-name: example; animation-duration: 1s;">
+  <div id="mineloader" style="transition: all .2s ease-in-out; background-color: #04AA6D; width: 0%; height: 100%;"></div>
+</div>
+  
+   <div id="portada12" style="z-index: 18;"></div>
+   
+
+  </div>
+  
+
+        </section>
+        <section class="home-section" id="secBibl">
+          <div id="prueba"></div>
+          <span class="text">BIBLIOTECA</span>
+          <div id="installBibl"></div>
+          <span class="text" style="margin-bottom: 5px;">Tus packs guardados</span> 
+          <div >
+            <button id="addPack" class="cssbuttons-io-button" style="margin-left: 18px; margin-bottom:20px;" onclick="addPack()">
+              <i class='bx bx-add-to-queue' ></i>
+              <span>Añadir Pack</span>
+              </button>
+              <button id="exportPack" class="cssbuttons-io-button" style=" margin-bottom:20px;">
+                <i class='bx bx-add-to-queue' ></i>
+                <span>Exportar pack</span>
+                </button>
+          <div class="containerlolo" id="packsDiv" style="margin: 0 auto; border-width: 2px; border-color: #ffffff; border-style: solid; border-radius: 15px; margin-bottom: 20px;"></div>
+        </div>
+          <div id="files"></div>         
+        </section>
+        <section class="home-section-complementos" id="secComplementos" >
+          <span class="text">COMPLEMENTOS</span>
+        </div>
+        <ul class="cards">
+          <li>
+            <a class="card">
+              <img src="https://i.imgur.com/lcUeviB.png" class="card__image"  />
+              <div  class="card__overlay">
+                <div class="card__header">
+                  <svg class="card__arc" xmlns="http://www.w3.org/2000/svg"><path /></svg>                     
+                  <div class="card__header-text">
+                    <h3 class="card__title">Minecraft</h3>            
+                    <span class="card__title">Mini mapa mod </span>
+                  </div>
+                </div>
+                <buttton id="CompMine1" class="custom-btn btn-11">INSTALAR</buttton>
+              </div>
+            </a>
+          </li>
+          <li>
+            <script src="./js/rendererOld2.js"></script>
     
     
-    
-  </body>
-</html>
+            <li>
+        </section>
+        <section class="home-section" id="secAustes">
+          <span class="text">AJUSTES</span>
+          <div class="list-group mb-5 shadow">
+            <div class="list-group-item">
+              <div class="row align-items-center">
+                <div class="col">
+                  <strong class="mb-2">Cerrar sesión</strong>
+                </div>
+                <button class="button2" style="display: inline-block; padding: 2px; margin-right: 10px;"> <span style="display: inline-block; padding:10px;" onclick="logout();">SALIR</span> </button>
+              </div>
+            </div>
+            <div class="list-group-item">
+              <div class="row align-items-center">
+                <div class="col">
+                  <strong class="mb-2">Activar los complementos </strong>
+                  <span class="badge badge-pill badge-success">BETA</span>
+                  <p class="text-muted mb-0">Instala mods o complementos extra para mejorar tu experiencia en el juego.</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="Zcomplementos" onclick="Xcomplementos()">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+            <div class="list-group-item">
+              <div class="row align-items-center">
+                <div class="col">
+                  <strong class="mb-2">Minecraft Premium</strong>
+                  <span class="badge badge-pill badge-success">BETA</span>
+                </div>
+                <div class="col-auto"></div>
+                <label class="switch">
+                  <input type="checkbox" id="Zpremium" onclick="Xpremium()">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+            <div class="list-group-item">
+              <div class="row align-items-center">
+                <div class="col">
+                  <strong class="mb-2">Ocultar botón de menú</strong>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="Zmenu" onclick="Xmenu()">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+            <div class="list-group-item">
+              <div class="row align-items-center">
+                <div class="col">
+                  <strong class="mb-2">Ocultar cuenta</strong>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="Zcerrarsesion" onclick="Xcerrarsesion()">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              
+            </div>
+            <div style="position: relative; display: block; margin-top: 15px; background-color: #242629; border: 1px solid rgba(0, 0, 0, 0.125);">
+              <span class="text">MINECRAFT</span>
+            </div>
+            <div class="list-group-item">
+              <div class="row align-items-center">
+                <div class="col">
+                  <strong class="mb-2">Resolución del juego</strong>
+                  
+                </div>
+                <label>
+                  <input type="number" min="0" value="1280" max="2000" style="border-radius: 15px; text-align: center;background-color: #16161a; border-width: 0px; padding: 5px;" id="width" onclick="Xwidth()">
+                  <text style="display: inline-block; color: #ffffff;font-size: 25px; font-weight: 500; margin-left: 18px; margin-right: 18px;">X</text>
+                </label>
+                <label>
+                  <input type="number" min="0" value="720" max="2000" style="border-radius: 15px; text-align: center;background-color: #16161a; border-width: 0px; padding: 5px;" id="height" onclick="Xheight()">
+                </label>
+              </div>
+            </div>
+            <div class="list-group-item">
+              <div class="row align-items-center">
+                <div class="col">
+                  <strong class="mb-2">Lanzar el juego a pantalla completa</strong>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="Zfullscreen" onclick="Xfullscreen()">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+            <div style="position: relative; display: block; margin-top: 15px; background-color: #242629; border: 1px solid rgba(0, 0, 0, 0.125);">
+              <span class="text">JAVA</span>
+            </div>
+            <div class="list-group-item">
+              <div class="row align-items-center">
+                <div class="col">
+                  <strong class="mb-2">RAM máxima</strong>
+                </div>
+                <label>
+                  <input type="number" step="0.5" min="1"value="4" max="99" style="border-radius: 15px; text-align: center;background-color: #16161a; border-width: 0px; padding: 5px;" id="maxram" oninput="Xmaxram()">
+                  <text style="display: inline-block; color: #ffffff;font-size: 25px; font-weight: 500; margin-left: 18px; margin-right: 18px;">GB</text>
+                </label>
+              </div>
+              <div class="row align-items-center" style="margin-top: 10px;">
+                <div class="col">
+                  <strong class="mb-2">RAM minima</strong>
+                </div>
+                <label>
+                  <input type="number" step="0.5" min="1"value="4" max="99" style="border-radius: 15px; text-align: center;background-color: #16161a; border-width: 0px; padding: 5px;" id="minram" oninput="Xminram()">
+                  <text style="display: inline-block; color: #ffffff;font-size: 25px; font-weight: 500; margin-left: 18px; margin-right: 18px;">GB</text>
+                </label>
+              </div>
+              <p class="text-muted mb-0">La RAM minima recomendada es de 3GB. Ajustando la RAM mínima y máxima al mismo valor ayuda a reducir el LAG. </p>
+              <text class="text-muted mb-0" style="font-weight: 500;" id="totalRAM"></text>
+            </div>
+            
+            <div class="list-group-item">
+              <div class="row align-items-center">
+                <div class="col">
+                  <strong class="mb-2">Versión personalizada</strong>
+                  <span class="badge badge-pill badge-red">No disponible</span>
+                </div>
+                <label>
+                </label>
+              </div>
+            </div>
+            <div class="list-group-item">
+              <div class="row align-items-center">
+                <div class="col">
+                  <strong class="mb-2">Opciones JVM adicionales</strong>
+                  <span class="badge badge-pill badge-red">No disponible</span>
+                </div>
+                <label>
+                </label>
+              </div>
+            </div>
+          </div>
+          
+          
+          </div>
+          </div>
+        </section>
+        <section class="home-section" id="secSearch">
+          <span class="text">BÚSQUEDA</span><button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="lastSec();">Volver</span> </button>
+          <br>
+          <div style="background-color: #242629; border-radius: 15px; margin-left: 18px; margin-right: 18px; padding-top: 10px; padding-bottom: 10px;">
+          <text id="searchText" style="display: table; margin: 0 auto; color: #ffffff; font-size: 25px; font-weight: 500; ">RESULTADOS DE LA BÚSQUEDA</text>
+          </div>
+          <div id="searchResults"></div>
+        </section>
+        <section class="home-section" id="secVersiones">
+          <span class="text">VERSIONES</span><button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="lastSec();">Volver</span> </button><button id="verInstalled"class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verInstalled()">Instaladas</span></button><button id="verMine"class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="searchVersions()">Disponible</span></button>
+          <div style="background-color: #242629; border-radius: 15px; margin: 20px; padding-bottom: 20px;" id="verFilters"><span class="text">FILTROS</span>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.8</span> </button>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.9</span> </button>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.10</span> </button>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.12</span> </button>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.13</span> </button>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.14</span> </button>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.15</span> </button>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.16</span> </button>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.17</span> </button>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.18</span> </button>
+            <button class="button2" style="display: inline-block; padding: 2px;"> <span style="display: inline-block; padding:4px;" onclick="verFilter(this)">1.19</span> </button></div>
+            <div class="containerlolo" id="verAlertDiv" style="margin: 0 auto;"></div>
+            <div class="containerlolo" id="verDiv" style="margin: 0 auto;"></div>
+        </section>
+        <script>
+          let sidebar = document.querySelector(".sidebar");
+          let closeBtn = document.querySelector("#btn");
+          let searchBtn = document.querySelector(".bx-search");
+          document.querySelectorAll('.home-section').forEach(btn => {
+          btn.addEventListener("click", function(eventos){
+          if(sidebar.classList.contains("open")){
+            sidebar.classList.remove("open");
+          }})});
+        
+          closeBtn.addEventListener("click", ()=>{
+            sidebar.classList.toggle("open");
+            menuBtnChange();//calling the function(optional)
+          });
+        
+          searchBtn.addEventListener("click", ()=>{ // Sidebar open when you click on the search iocn
+            sidebar.classList.toggle("open");
+            menuBtnChange(); //calling the function(optional)
+          });
+        
+          // following are the code to change sidebar button(optional)
+          function menuBtnChange() {
+           if(sidebar.classList.contains("open")){
+             closeBtn.classList.replace("bx-menu", "bx-menu-alt-right");//replacing the iocns class
+           }else {
+             closeBtn.classList.replace("bx-menu-alt-right","bx-menu");//replacing the iocns class
+           }
+          }
+
+          </script>
+      </body>
+      </html>

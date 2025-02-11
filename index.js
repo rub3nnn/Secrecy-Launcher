@@ -1,3 +1,4 @@
+
 // All of the Node.js APIs are available in the preload process.
 
 const {ipcRenderer} = require('electron');
@@ -6,24 +7,17 @@ const Store = require('electron-store')
 
 const storage = new Store()
 
-
-// It has the same sandbox as a Chrome extension.
-window.addEventListener('DOMContentLoaded', () => {
-  const replaceText = (selector, text) => {
-    const element = document.getElementById(selector)
-    if (element) element.innerText = text
-  }
-
-  for (const type of ['chrome', 'node', 'electron']) {
-    replaceText(`${type}-version`, process.versions[type])
-  }
-})
-
+const renderer = require('./js/intrarenderer')
 
 function receiveMessageFromIframePage (event) {
-    ipcRenderer.send( 'logged' );
-
+    ipcRenderer.send( 'cuentaEnd' );
+    
 }
+
+function receiveMessageFromIframePage2 (event) {
+  ipcRenderer.send('relogin');
+}
+
 
 //Listen for message events
 window.addEventListener('message', function(event) {
@@ -32,5 +26,7 @@ window.addEventListener('message', function(event) {
       storage.set("perfilFoto",event.data.data.v2);
       receiveMessageFromIframePage(event);
   }
+  if(event.data.event_id === 'logout'){
+    receiveMessageFromIframePage2(event);
+}
 });
-
