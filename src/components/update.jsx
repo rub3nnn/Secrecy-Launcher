@@ -11,7 +11,6 @@ export function UpdateNotification() {
   const [updateInfo, setUpdateInfo] = useState({
     available: false,
     version: undefined,
-    progress: undefined,
     downloaded: undefined
   })
 
@@ -24,23 +23,15 @@ export function UpdateNotification() {
       setUpdateInfo({
         available: true,
         version: info.version,
-        progress: 0,
         downloaded: false
       })
-    }
-
-    const downloadProgressListener = (_, progress) => {
-      setUpdateInfo((prev) => ({
-        ...prev,
-        progress: Math.floor(progress.percent)
-      }))
+      setIsInstalling(true)
     }
 
     const updateDownloadedListener = (_, info) => {
       setUpdateInfo((prev) => ({
         ...prev,
-        downloaded: true,
-        progress: 100
+        downloaded: true
       }))
     }
 
@@ -50,54 +41,51 @@ export function UpdateNotification() {
       setIsInstalling(false)
     }
 
+    const updateNotAvailable = async (_, info) => {
+      setUpdateInfo({
+        available: false,
+        version: info.version,
+        downloaded: false
+      })
+      const updated = await window.electron.ipcRenderer.invoke('storageGet', 'updated')
+      if (updated === false) {
+        setShowSuccess(true)
+        window.electron.ipcRenderer.invoke('storageSet', 'updated', true)
+        setTimeout(() => {
+          setShowSuccess(false)
+        }, 3000)
+      }
+    }
+
     window.electron.ipcRenderer.on('update-available', updateAvailableListener)
-    window.electron.ipcRenderer.on('download-progress', downloadProgressListener)
+    window.electron.ipcRenderer.on('update-not-available', updateNotAvailable)
     window.electron.ipcRenderer.on('update-downloaded', updateDownloadedListener)
     window.electron.ipcRenderer.on('update-error', updateErrorListener)
 
-    // Comprobar actualizaciones al montar el componente
-    window.electron.ipcRenderer.send('check-for-updates')
-
     return () => {
       window.electron.ipcRenderer.removeListener('update-available', updateAvailableListener)
-      window.electron.ipcRenderer.removeListener('download-progress', downloadProgressListener)
       window.electron.ipcRenderer.removeListener('update-downloaded', updateDownloadedListener)
       window.electron.ipcRenderer.removeListener('update-error', updateErrorListener)
     }
   }, [])
-
-  const handleInstallUpdate = () => {
+  useEffect(() => {
     if (updateInfo.downloaded) {
-      // Si ya está descargado, instalar
-      window.electron.ipcRenderer.send('install-update')
-    } else {
-      // Si no, comenzar descarga
-      setIsInstalling(true)
-      window.electron.ipcRenderer.send('start-update-download')
+      window.electron.ipcRenderer.invoke('storageSet', 'updated', false)
+      setTimeout(() => {
+        window.electron.ipcRenderer.send('install-update')
+      }, 2000)
     }
-  }
+  }, [updateInfo.downloaded])
 
   const dismissUpdate = () => {
     setUpdateInfo({ available: false })
   }
 
-  useEffect(() => {
-    if (updateInfo.downloaded && isInstalling) {
-      // Mostrar éxito cuando la descarga se completa durante la instalación
-      setShowSuccess(true)
-      setIsInstalling(false)
-      const timer = setTimeout(() => {
-        setShowSuccess(false)
-      }, 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [updateInfo.downloaded, isInstalling])
-
   return (
     <>
       {/* Notificación de actualización disponible */}
       <AnimatePresence>
-        {updateInfo.available && !isInstalling && !showSuccess && (
+        {false && (
           <motion.div
             className="fixed bottom-4 right-4 z-50 max-w-md"
             initial={{ opacity: 0, y: 50 }}
@@ -131,7 +119,8 @@ export function UpdateNotification() {
                   <div className="mt-3 flex gap-2">
                     <Button size="sm" onClick={handleInstallUpdate}>
                       <Download className="h-4 w-4 mr-1" />
-                      {updateInfo.downloaded ? 'Instalar ahora' : 'Descargar'}
+                      {updateInfo.downloaded ? 'Instalar ahora' : 'Descargar'} {updateInfo.progress}{' '}
+                      %
                     </Button>
                     <Button size="sm" variant="outline" onClick={dismissUpdate}>
                       Más tarde
@@ -178,34 +167,6 @@ export function UpdateNotification() {
                   Por favor, no cierre la aplicación durante el proceso.
                 </p>
               </div>
-
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Progreso</span>
-                    <span>{updateInfo.progress || 0}%</span>
-                  </div>
-                  <Progress value={updateInfo.progress || 0} className="h-2" />
-                </div>
-
-                <div className="text-xs text-muted-foreground space-y-1">
-                  {!updateInfo.downloaded && (
-                    <>
-                      <p>• Descargando archivos de actualización</p>
-                      {(updateInfo.progress || 0) > 30 && (
-                        <p>• Verificando integridad de archivos</p>
-                      )}
-                      {(updateInfo.progress || 0) > 60 && <p>• Preparando instalación</p>}
-                    </>
-                  )}
-                  {updateInfo.downloaded && (
-                    <>
-                      <p>• Preparando para reiniciar</p>
-                      <p>• Guardando todos los datos</p>
-                    </>
-                  )}
-                </div>
-              </div>
             </motion.div>
           </motion.div>
         )}
@@ -226,13 +187,17 @@ export function UpdateNotification() {
                 <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 mr-3">
                   <Check className="h-4 w-4" />
                 </div>
-                <div>
-                  <h3 className="font-medium">Actualización lista</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {updateInfo.version
-                      ? `La aplicación se actualizará a la versión v${updateInfo.version} al reiniciar`
-                      : 'La actualización está lista para instalarse'}
-                  </p>
+                <div className="flex items-center gap-2">
+                  <div>
+                    <h3 className="font-medium">Estás en la última versión</h3>
+                    <p className="text-sm text-muted-foreground">
+                      La aplicación se ha actualizado correctamente
+                    </p>
+                  </div>
+
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                    v{updateInfo.version}
+                  </Badge>
                 </div>
               </div>
             </div>

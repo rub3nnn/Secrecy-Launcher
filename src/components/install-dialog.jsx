@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 
-export function InstallDialog({ game, open, onOpenChange, onComplete }) {
+export function InstallDialog({ game, open, onOpenChange, onComplete, onError }) {
   const [step, setStep] = useState('specs')
   const [downloadProgress, setDownloadProgress] = useState('')
   const [installProgress, setInstallProgress] = useState('')
@@ -21,6 +21,10 @@ export function InstallDialog({ game, open, onOpenChange, onComplete }) {
       window.electron.ipcRenderer.on('download-progress', (event, data) => {
         console.log(data)
         setDownloadProgress(data)
+      })
+      window.electron.ipcRenderer.on('download-error', (event, data) => {
+        console.log(data)
+        onError(data)
       })
       window.electron.ipcRenderer.on('download-complete', () => {
         setStep('installing')

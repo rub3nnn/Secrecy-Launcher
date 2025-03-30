@@ -72,6 +72,10 @@ function createWindow(): void {
 function setupAutoUpdater(): void {
   const token = getGitHubToken()
 
+  if (is.dev) {
+    autoUpdater.forceDevUpdateConfig = true
+  }
+
   if (!token && !is.dev) {
     console.error('No se encontró token de GitHub para el auto-updater')
     return
@@ -84,8 +88,8 @@ function setupAutoUpdater(): void {
   if (token) {
     autoUpdater.setFeedURL({
       provider: 'github',
-      owner: 'tu-usuario', // Reemplaza con tu usuario/organización
-      repo: 'tu-repositorio-privado', // Reemplaza con tu repo
+      owner: 'rub3nnn', // Reemplaza con tu usuario/organización
+      repo: 'Secrecy-Launcher', // Reemplaza con tu repo
       token: token,
       private: true
     })
@@ -101,6 +105,11 @@ function setupAutoUpdater(): void {
   autoUpdater.on('update-available', (info) => {
     console.log('Update available:', info)
     mainWindow?.webContents.send('update-available', info)
+  })
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('Update available:', info)
+    mainWindow?.webContents.send('update-not-available', info)
   })
 
   autoUpdater.on('update-downloaded', (info) => {
@@ -121,11 +130,6 @@ function setupAutoUpdater(): void {
 }
 
 function checkForUpdates(): void {
-  if (is.dev) {
-    console.log('En modo desarrollo, no se comprueban actualizaciones')
-    return
-  }
-
   console.log('Comprobando actualizaciones...')
   autoUpdater.checkForUpdates().catch((err) => {
     console.error('Error al comprobar actualizaciones:', err)
@@ -173,7 +177,7 @@ app.whenReady().then(() => {
     console.log('Installing game:', gameData.title)
 
     const downloadPath = path.join(
-      app.getPath('downloads'),
+      app.getPath('userData'),
       'game-downloads',
       gameData.id.toString()
     )
@@ -183,7 +187,6 @@ app.whenReady().then(() => {
     ensureDirectory(extractPath)
 
     const dl = new DownloaderHelper(gameData.url, downloadPath, {
-      fileName: `${gameData.id}.rar`,
       retry: { maxRetries: 3, delay: 3000 },
       override: true
     })
@@ -218,11 +221,11 @@ app.whenReady().then(() => {
         return event.sender.send('installation-complete', {
           id: gameData.id,
           installPath: downloadPath,
-          exePath: path.join(downloadPath, gameData.executable)
+          exePath: downloadInfo.filePath
         })
       }
 
-      const filePath = path.join(downloadPath, `${gameData.id}.rar`)
+      const filePath = downloadInfo.filePath
 
       try {
         event.sender.send('installing-progress', {
@@ -376,6 +379,34 @@ app.whenReady().then(() => {
       console.error('Error al verificar instalación:', error)
       return false
     }
+  })
+
+  const { spawn } = require('child_process')
+
+  ipcMain.on('launchGame', (event, game: any) => {
+    mainWindow?.hide()
+    const appProcess = spawn(game.exePath, [], {
+      shell: true // Necesario en Windows para .exe
+    })
+    // Evento 'error': Falló al iniciar
+    appProcess.on('error', (err) => {
+      mainWindow?.show()
+      event.sender.send('launch-end', {
+        id: game.id,
+        success: false,
+        error: err.message
+      })
+    })
+
+    // Evento 'close': La aplicación se cerró
+    appProcess.on('close', (code) => {
+      mainWindow?.show()
+      event.sender.send('launch-end', {
+        id: game.id,
+        success: true,
+        code: code
+      })
+    })
   })
 
   createWindow()

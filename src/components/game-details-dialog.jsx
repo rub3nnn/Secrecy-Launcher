@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import video from '@renderer/assets/video.webm' // Adjust the path as necessary
 import banner from '@renderer/assets/banner.jpg'
 
-export function GameDetailsDialog({ game, open, onOpenChange, onToggleFavorite }) {
+export function GameDetailsDialog({ game, open, onOpenChange, onToggleFavorite, onInstall }) {
   const [videoLoaded, setVideoLoaded] = useState(false)
   const [videoError, setVideoError] = useState(false)
   const videoRef = useRef(null)
@@ -57,23 +57,10 @@ export function GameDetailsDialog({ game, open, onOpenChange, onToggleFavorite }
         >
           {/* Banner image (always shown, or as fallback) */}
           <img
-            src={banner || game.image || '/placeholder.svg'}
+            src={game.banner || '/placeholder.svg'}
             alt={game.title}
             className={`w-full h-full object-cover absolute -z-10 ${videoLoaded ? 'opacity-0' : 'opacity-100'} transition-opacity duration-500`}
           />
-
-          {/* Background video (if available) */}
-          {game.backgroundVideo && (
-            <video
-              ref={videoRef}
-              src={video}
-              className={`w-full h-full object-cover absolute -z-10 ${videoLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}
-              autoPlay
-              loop
-              muted
-              playsInline
-            />
-          )}
 
           <div className="absolute top-4 right-4">
             <Button
@@ -91,6 +78,11 @@ export function GameDetailsDialog({ game, open, onOpenChange, onToggleFavorite }
             <h2 className="text-2xl font-bold text-white">{game.title}</h2>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant="secondary">{game.genre}</Badge>
+              {!game.url && (
+                <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">
+                  Próximamente disponible
+                </Badge>
+              )}
               <Button
                 size="sm"
                 className={`h-7 px-2 ${game.favorite ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' : 'bg-transparent'}`}
@@ -124,19 +116,30 @@ export function GameDetailsDialog({ game, open, onOpenChange, onToggleFavorite }
                 </div>
               )}
             </div>
-            <Button size="lg" variant={game.installed ? 'default' : 'outline'}>
-              {game.installed ? (
-                <>
+            {game.url &&
+              (game.installed ? (
+                <Button
+                  size="lg"
+                  variant={game.installed ? 'default' : 'outline'}
+                  onClick={() => {
+                    window.electron.ipcRenderer.send('launchGame', game)
+                  }}
+                >
                   <Play className="mr-2 h-4 w-4" />
                   Jugar
-                </>
+                </Button>
               ) : (
-                <>
+                <Button
+                  size="lg"
+                  variant={game.installed ? 'default' : 'outline'}
+                  onClick={() => {
+                    onInstall(game.id)
+                  }}
+                >
                   <Download className="mr-2 h-4 w-4" />
                   Instalar
-                </>
-              )}
-            </Button>
+                </Button>
+              ))}
           </div>
 
           <Tabs defaultValue="about">

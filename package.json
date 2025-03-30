@@ -1,10 +1,10 @@
 {
   "name": "secrecy-launcher",
   "productName": "Secrecy Launcher",
-  "version": "1.0.3",
-  "description": "Let's play!",
+  "version": "1.0.4",
+  "description": "Secrecy Launcher",
   "main": "./out/main/index.js",
-  "author": "example.com",
+  "author": "Secrecy",
   "homepage": "https://electron-vite.org",
   "scripts": {
     "format": "prettier --write .",

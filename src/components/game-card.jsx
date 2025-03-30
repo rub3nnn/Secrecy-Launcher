@@ -14,9 +14,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Progress } from '@/components/ui/progress'
 
-import video from '@renderer/assets/video.webm' // Adjust the path as necessary
-import banner from '@renderer/assets/banner.jpg' // Adjust the path as necessary
-
 export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggleFavorite }) {
   const [videoLoaded, setVideoLoaded] = useState(false)
   const [videoError, setVideoError] = useState(false)
@@ -67,7 +64,7 @@ export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggle
       <div className="relative w-full h-[400px]">
         {/* Banner image (always shown, or as fallback) */}
         <img
-          src={banner}
+          src={game.banner}
           alt={game.title}
           className={`w-full h-full object-cover absolute inset-0 ${videoLoaded && isHovered ? 'opacity-0' : 'opacity-100'} transition-opacity duration-500`}
         />
@@ -76,7 +73,7 @@ export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggle
         {game.backgroundVideo && isHovered && (
           <video
             ref={videoRef}
-            src={video}
+            src={game.backgroundVideo}
             className={`w-full h-full object-cover absolute inset-0 ${videoLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}
             autoPlay
             loop
@@ -125,6 +122,7 @@ export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggle
               <h3 className="text-3xl font-bold mb-1">{game.title}</h3>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">{game.genre}</Badge>
+                {!game.url && <Badge>Próximamente disponible</Badge>}
                 <span className="text-sm text-white/80">
                   {game.installed ? `${game.size} • ${game.lastPlayed}` : `Tamaño: ${game.size}`}
                 </span>
@@ -147,17 +145,25 @@ export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggle
               <Button size="lg" variant="secondary" className="flex-1" onClick={onViewDetails}>
                 Ver detalles
               </Button>
-              {game.installed ? (
-                <Button size="lg" variant="default" className="flex-1">
-                  <Play className="mr-2 h-4 w-4" />
-                  Jugar
-                </Button>
-              ) : (
-                <Button size="lg" variant="default" className="flex-1" onClick={onInstall}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Instalar
-                </Button>
-              )}
+              {game.url &&
+                (game.installed ? (
+                  <Button
+                    size="lg"
+                    variant="default"
+                    className="flex-1"
+                    onClick={() => {
+                      window.electron.ipcRenderer.send('launchGame', game)
+                    }}
+                  >
+                    <Play className="mr-2 h-4 w-4" />
+                    Jugar
+                  </Button>
+                ) : (
+                  <Button size="lg" variant="default" className="flex-1" onClick={onInstall}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Instalar
+                  </Button>
+                ))}
             </div>
           </div>
         </div>

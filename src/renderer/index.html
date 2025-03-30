@@ -3,10 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <title>Secrecy Launcher - BETA</title>
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <!-- Política de Seguridad de Contenido (CSP) actualizada -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      content="default-src 'self'; 
+              script-src 'self'; 
+              style-src 'self' 'unsafe-inline'; 
+              img-src 'self' data: https://secrecyfiles.github.io;
+              connect-src 'self' https://secrecyfiles.github.io;
+              media-src 'self' https://secrecyfiles.github.io"
     />
   </head>
 
