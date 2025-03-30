@@ -6,17 +6,36 @@ import fs from 'fs'
 import { createExtractorFromFile } from 'node-unrar-js'
 import Store from 'electron-store'
 import { autoUpdater } from 'electron-updater'
+import dotenv from 'dotenv'
+
+// Configurar variables de entorno
+dotenv.config()
 
 const store = new Store()
 const activeDownloads = new Map<number, DownloaderHelper>()
 
-// Variable para mantener referencia a la ventana principal
 let mainWindow: BrowserWindow | null = null
 
 const getIconPath = () => {
   return app.isPackaged
-    ? path.join(process.resourcesPath, 'icon.png') // Producción
-    : path.join(__dirname, '../../resources/icon.png') // Desarrollo
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(__dirname, '../../resources/icon.png')
+}
+
+// Función para obtener el token de forma segura
+function getGitHubToken(): string | null {
+  // 1. Intenta desde variables de entorno (para desarrollo y producción)
+  if (process.env.GH_TOKEN) {
+    return process.env.GH_TOKEN
+  }
+
+  // 2. Intenta desde el store (último recurso, no recomendado para producción)
+  try {
+    const storedToken = store.get('gh_token') as string
+    return storedToken || null
+  } catch {
+    return null
+  }
 }
 
 function createWindow(): void {
@@ -32,11 +51,9 @@ function createWindow(): void {
       sandbox: false
     }
   })
-  console.log('La ruta del icono es:', path.join(__dirname, '../../resources/icon.png'))
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
-    // Iniciar la comprobación de actualizaciones después de que la ventana esté lista
     checkForUpdates()
   })
 
@@ -52,13 +69,28 @@ function createWindow(): void {
   }
 }
 
-// Configuración del auto-updater
 function setupAutoUpdater(): void {
-  // Configuración básica
+  const token = getGitHubToken()
+
+  if (!token && !is.dev) {
+    console.error('No se encontró token de GitHub para el auto-updater')
+    return
+  }
+
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
 
-  // Configura el logger (opcional)
+  // Configuración específica para repositorio privado
+  if (token) {
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'tu-usuario', // Reemplaza con tu usuario/organización
+      repo: 'tu-repositorio-privado', // Reemplaza con tu repo
+      token: token,
+      private: true
+    })
+  }
+
   autoUpdater.logger = {
     info: (message) => console.log('Info:', message),
     error: (message) => console.error('Error:', message),
@@ -66,7 +98,6 @@ function setupAutoUpdater(): void {
     debug: (message) => console.debug('Debug:', message)
   }
 
-  // Eventos del autoUpdater
   autoUpdater.on('update-available', (info) => {
     console.log('Update available:', info)
     mainWindow?.webContents.send('update-available', info)
@@ -80,10 +111,15 @@ function setupAutoUpdater(): void {
   autoUpdater.on('error', (error) => {
     console.error('Update error:', error)
     mainWindow?.webContents.send('update-error', error)
+
+    // Manejo específico de errores de autenticación
+    if (error.message.includes('401') || error.message.includes('403')) {
+      console.error('Error de autenticación - Verifica tu token de GitHub')
+      mainWindow?.webContents.send('update-auth-error')
+    }
   })
 }
 
-// Función para comprobar actualizaciones
 function checkForUpdates(): void {
   if (is.dev) {
     console.log('En modo desarrollo, no se comprueban actualizaciones')
@@ -103,20 +139,15 @@ function ensureDirectory(directoryPath: string): void {
   }
 }
 
-// Función para actualizar la barra de progreso
 function updateProgressBar(progress: number): void {
   if (!mainWindow) return
 
   if (progress < 0) {
-    // Modo indeterminado (cuando no sabemos el progreso exacto)
     mainWindow.setProgressBar(-1)
   } else if (progress >= 1) {
-    // Completado (la barra desaparece)
     mainWindow.setProgressBar(1)
-    // Esperar un poco y luego limpiar la barra
     setTimeout(() => mainWindow?.setProgressBar(-1), 1000)
   } else {
-    // Progreso normal
     mainWindow.setProgressBar(progress)
   }
 }
@@ -133,7 +164,7 @@ app.whenReady().then(() => {
 
   ipcMain.on('ping', () => console.log('pong'))
 
-  // Handler para instalar la actualización cuando el usuario lo solicite
+  // Handler para instalar la actualización
   ipcMain.on('install-update', () => {
     autoUpdater.quitAndInstall()
   })
@@ -141,7 +172,6 @@ app.whenReady().then(() => {
   ipcMain.on('installGame', async (event, gameData) => {
     console.log('Installing game:', gameData.title)
 
-    // Directorios
     const downloadPath = path.join(
       app.getPath('downloads'),
       'game-downloads',
@@ -149,7 +179,6 @@ app.whenReady().then(() => {
     )
     const extractPath = path.join(downloadPath, 'extracted')
 
-    // Asegurar que los directorios existan
     ensureDirectory(downloadPath)
     ensureDirectory(extractPath)
 
@@ -159,13 +188,11 @@ app.whenReady().then(() => {
       override: true
     })
 
-    // Almacenar la descarga
     activeDownloads.set(gameData.id, dl)
 
     dl.on('download', (downloadInfo) => {
       console.log('Download started:', downloadInfo)
       event.sender.send('download-started', { id: gameData.id })
-      // Iniciar barra de progreso (modo indeterminado al principio)
       updateProgressBar(-1)
     })
 
@@ -179,7 +206,6 @@ app.whenReady().then(() => {
         downloaded: stats.downloaded,
         total: stats.total
       })
-      // Actualizar barra de progreso (convertir a fracción 0-1)
       updateProgressBar(progress / 100)
     })
 
@@ -196,7 +222,6 @@ app.whenReady().then(() => {
         })
       }
 
-      // Comenzar la extracción RAR
       const filePath = path.join(downloadPath, `${gameData.id}.rar`)
 
       try {
@@ -207,25 +232,21 @@ app.whenReady().then(() => {
           message: 'Preparando para instalar archivos...'
         })
 
-        // Poner la barra en modo indeterminado durante la preparación
         updateProgressBar(-1)
 
-        // Usar createExtractorFromFile para extraer directamente del archivo
         const extractor = await createExtractorFromFile({
           filepath: filePath,
           targetPath: extractPath
         })
 
-        // Obtener lista de archivos primero para calcular progreso
         const list = extractor.getFileList()
-        const fileHeaders = [...list.fileHeaders] // Consumir el iterador
+        const fileHeaders = [...list.fileHeaders]
         const totalFiles = fileHeaders.length
 
         if (totalFiles === 0) {
           throw new Error('El archivo RAR está vacío')
         }
 
-        // Extraer archivos con seguimiento de progreso
         let extractedFiles = 0
         const extracted = extractor.extract()
 
@@ -240,7 +261,6 @@ app.whenReady().then(() => {
             message: `Procesando: ${fileHeader.name} (${extractedFiles}/${totalFiles})`
           })
 
-          // Actualizar barra de progreso durante la extracción
           updateProgressBar(progress / 100)
         }
 
@@ -252,10 +272,8 @@ app.whenReady().then(() => {
           message: 'Instalación completada'
         })
 
-        // Completar la barra de progreso
         updateProgressBar(1)
 
-        // Instalación completada
         setTimeout(() => {
           event.sender.send('installation-complete', {
             id: gameData.id,
@@ -265,7 +283,6 @@ app.whenReady().then(() => {
         }, 2000)
       } catch (error: any) {
         console.error('Extraction error:', error)
-        // Limpiar barra de progreso en caso de error
         updateProgressBar(-1)
         event.sender.send('installation-error', {
           id: gameData.id,
@@ -276,7 +293,6 @@ app.whenReady().then(() => {
 
     dl.on('error', (err) => {
       console.error('Download error:', err)
-      // Limpiar barra de progreso en caso de error
       updateProgressBar(-1)
       event.sender.send('download-error', {
         id: gameData.id,
@@ -297,7 +313,6 @@ app.whenReady().then(() => {
       dl.stop()
       activeDownloads.delete(gameId)
       console.log(`Download canceled for game ID: ${gameId}`)
-      // Limpiar barra de progreso al cancelar
       updateProgressBar(-1)
     }
   })
@@ -333,12 +348,10 @@ app.whenReady().then(() => {
         throw new Error('No se proporcionó ruta de instalación')
       }
 
-      // Verificar si la ruta existe (forma sincrónica)
       if (!fs.existsSync(installPath)) {
         return { success: true, message: 'La ruta ya no existe' }
       }
 
-      // Eliminar directorio recursivamente (forma sincrónica)
       if (fs.lstatSync(installPath).isDirectory()) {
         fs.rmdirSync(installPath, { recursive: true })
       } else {

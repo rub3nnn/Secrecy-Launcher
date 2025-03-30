@@ -1,5 +1,6 @@
 import { GameLibrary } from '@/components/game-library'
 import { SidebarNav } from '@/components/sidebar-nav'
+import { UpdateNotification } from '@/components/update'
 
 function App() {
   return (
@@ -8,6 +9,7 @@ function App() {
       <main className="flex-1 overflow-auto">
         <GameLibrary />
       </main>
+      <UpdateNotification />
     </div>
   )
 }

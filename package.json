@@ -1,7 +1,7 @@
 {
   "name": "secrecy-launcher",
   "productName": "Secrecy Launcher",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Let's play!",
   "main": "./out/main/index.js",
   "author": "example.com",
@@ -22,6 +22,13 @@
     "build:linux": "electron-vite build && electron-builder --linux"
   },
   "build": {
+    "appId": "com.secrecy.launcher",
+    "publish": {
+      "provider": "github",
+      "owner": "rub3nnn",
+      "repo": "Secrecy-Launcher",
+      "private": true
+    },
     "extraResources": [
       {
         "from": "resources/icon.png",
@@ -45,8 +52,10 @@
     "@tailwindcss/vite": "^4.0.17",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dotenv": "^16.4.7",
     "electron-store": "^7.0.3",
     "electron-updater": "^6.3.9",
+    "framer-motion": "^12.6.2",
     "lucide-react": "^0.485.0",
     "node-downloader-helper": "^2.1.9",
     "node-unrar-js": "^2.0.2",
