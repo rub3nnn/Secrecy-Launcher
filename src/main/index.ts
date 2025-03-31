@@ -6,10 +6,12 @@ import fs from 'fs'
 import { createExtractorFromFile } from 'node-unrar-js'
 import Store from 'electron-store'
 import { autoUpdater } from 'electron-updater'
-import dotenv from 'dotenv'
+import log from 'electron-log'
 
-// Configurar variables de entorno
-dotenv.config()
+// Configuración del logger
+log.transports.file.level = 'info'
+log.transports.file.maxSize = 5 * 1024 * 1024 // 5MB
+log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}'
 
 const store = new Store()
 const activeDownloads = new Map<number, DownloaderHelper>()
@@ -23,19 +25,8 @@ const getIconPath = () => {
 }
 
 // Función para obtener el token de forma segura
-function getGitHubToken(): string | null {
-  // 1. Intenta desde variables de entorno (para desarrollo y producción)
-  if (process.env.GH_TOKEN) {
-    return process.env.GH_TOKEN
-  }
-
-  // 2. Intenta desde el store (último recurso, no recomendado para producción)
-  try {
-    const storedToken = store.get('gh_token') as string
-    return storedToken || null
-  } catch {
-    return null
-  }
+function getGitHubToken() {
+  return import.meta.env.MAIN_VITE_GH_TOKEN
 }
 
 function createWindow(): void {
@@ -77,12 +68,11 @@ function setupAutoUpdater(): void {
   }
 
   if (!token && !is.dev) {
-    console.error('No se encontró token de GitHub para el auto-updater')
+    log.error('No se encontró token de GitHub para el auto-updater')
     return
   }
 
   autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
 
   // Configuración específica para repositorio privado
   if (token) {
@@ -96,50 +86,50 @@ function setupAutoUpdater(): void {
   }
 
   autoUpdater.logger = {
-    info: (message) => console.log('Info:', message),
-    error: (message) => console.error('Error:', message),
-    warn: (message) => console.warn('Warn:', message),
-    debug: (message) => console.debug('Debug:', message)
+    info: (message) => log.info('Info:', message),
+    error: (message) => log.error('Error:', message),
+    warn: (message) => log.warn('Warn:', message),
+    debug: (message) => log.debug('Debug:', message)
   }
 
   autoUpdater.on('update-available', (info) => {
-    console.log('Update available:', info)
+    log.info('Update available:', info)
     mainWindow?.webContents.send('update-available', info)
   })
 
   autoUpdater.on('update-not-available', (info) => {
-    console.log('Update available:', info)
+    log.info('Update available:', info)
     mainWindow?.webContents.send('update-not-available', info)
   })
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('Update downloaded:', info)
+    log.info('Update downloaded:', info)
     mainWindow?.webContents.send('update-downloaded', info)
   })
 
   autoUpdater.on('error', (error) => {
-    console.error('Update error:', error)
+    log.error('Update error:', error)
     mainWindow?.webContents.send('update-error', error)
 
     // Manejo específico de errores de autenticación
     if (error.message.includes('401') || error.message.includes('403')) {
-      console.error('Error de autenticación - Verifica tu token de GitHub')
+      log.error('Error de autenticación - Verifica tu token de GitHub')
       mainWindow?.webContents.send('update-auth-error')
     }
   })
 }
 
 function checkForUpdates(): void {
-  console.log('Comprobando actualizaciones...')
+  log.info('Comprobando actualizaciones...')
   autoUpdater.checkForUpdates().catch((err) => {
-    console.error('Error al comprobar actualizaciones:', err)
+    log.error('Error al comprobar actualizaciones:', err)
   })
 }
 
 function ensureDirectory(directoryPath: string): void {
   if (!fs.existsSync(directoryPath)) {
     fs.mkdirSync(directoryPath, { recursive: true })
-    console.log(`Created directory: ${directoryPath}`)
+    log.info(`Created directory: ${directoryPath}`)
   }
 }
 
@@ -166,7 +156,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  ipcMain.on('ping', () => console.log('pong'))
+  ipcMain.on('ping', () => log.info('pong'))
 
   // Handler para instalar la actualización
   ipcMain.on('install-update', () => {
@@ -174,7 +164,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.on('installGame', async (event, gameData) => {
-    console.log('Installing game:', gameData.title)
+    log.info('Installing game:', gameData.title)
 
     const downloadPath = path.join(
       app.getPath('userData'),
@@ -194,14 +184,14 @@ app.whenReady().then(() => {
     activeDownloads.set(gameData.id, dl)
 
     dl.on('download', (downloadInfo) => {
-      console.log('Download started:', downloadInfo)
+      log.info('Download started:', downloadInfo)
       event.sender.send('download-started', { id: gameData.id })
       updateProgressBar(-1)
     })
 
     dl.on('progress', (stats) => {
       const progress = Math.floor(stats.progress)
-      console.log(`Download progress: ${progress}%`)
+      log.info(`Download progress: ${progress}%`)
       event.sender.send('download-progress', {
         id: gameData.id,
         progress: progress,
@@ -213,7 +203,7 @@ app.whenReady().then(() => {
     })
 
     dl.on('end', async (downloadInfo) => {
-      console.log('Download completed:', downloadInfo)
+      log.info('Download completed:', downloadInfo)
       event.sender.send('download-complete', { id: gameData.id })
       activeDownloads.delete(gameData.id)
 
@@ -267,7 +257,7 @@ app.whenReady().then(() => {
           updateProgressBar(progress / 100)
         }
 
-        console.log('Extraction complete')
+        log.info('Extraction complete')
         event.sender.send('installing-progress', {
           id: gameData.id,
           stage: 'extracting',
@@ -285,7 +275,7 @@ app.whenReady().then(() => {
           })
         }, 2000)
       } catch (error: any) {
-        console.error('Extraction error:', error)
+        log.error('Extraction error:', error)
         updateProgressBar(-1)
         event.sender.send('installation-error', {
           id: gameData.id,
@@ -295,7 +285,7 @@ app.whenReady().then(() => {
     })
 
     dl.on('error', (err) => {
-      console.error('Download error:', err)
+      log.error('Download error:', err)
       updateProgressBar(-1)
       event.sender.send('download-error', {
         id: gameData.id,
@@ -305,7 +295,7 @@ app.whenReady().then(() => {
     })
 
     dl.start().catch((err) => {
-      console.error('Error starting download:', err)
+      log.error('Error starting download:', err)
       updateProgressBar(-1)
     })
   })
@@ -315,7 +305,7 @@ app.whenReady().then(() => {
     if (dl) {
       dl.stop()
       activeDownloads.delete(gameId)
-      console.log(`Download canceled for game ID: ${gameId}`)
+      log.info(`Download canceled for game ID: ${gameId}`)
       updateProgressBar(-1)
     }
   })
@@ -327,7 +317,7 @@ app.whenReady().then(() => {
     try {
       return store.get(key)
     } catch (error) {
-      console.error('Failed to get from store:', error)
+      log.error('Failed to get from store:', error)
       throw error
     }
   })
@@ -340,7 +330,7 @@ app.whenReady().then(() => {
       store.set(key, value)
       return { success: true }
     } catch (error) {
-      console.error('Failed to set in store:', error)
+      log.error('Failed to set in store:', error)
       throw error
     }
   })
@@ -363,7 +353,7 @@ app.whenReady().then(() => {
 
       return { success: true, message: 'Juego desinstalado correctamente' }
     } catch (error) {
-      console.error('Error al desinstalar:', error)
+      log.error('Error al desinstalar:', error)
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Error desconocido al desinstalar'
@@ -376,7 +366,7 @@ app.whenReady().then(() => {
       if (!installPath) return false
       return fs.existsSync(installPath)
     } catch (error) {
-      console.error('Error al verificar instalación:', error)
+      log.error('Error al verificar instalación:', error)
       return false
     }
   })
@@ -384,13 +374,36 @@ app.whenReady().then(() => {
   const { spawn } = require('child_process')
 
   ipcMain.on('launchGame', (event, game: any) => {
-    mainWindow?.hide()
-    const appProcess = spawn(game.exePath, [], {
-      shell: true // Necesario en Windows para .exe
+    log.info('[launchGame] Evento recibido. Juego:', game)
+
+    if (mainWindow) {
+      log.info('[launchGame] Ocultando ventana principal')
+      mainWindow.hide()
+    } else {
+      log.warn('[launchGame] mainWindow no está definido')
+    }
+
+    // Modificación importante: Escapar las rutas con espacios
+    const exePath = game.exePath.includes(' ') ? `"${game.exePath}"` : game.exePath
+    log.info('[launchGame] Ruta del ejecutable procesada:', exePath)
+
+    log.info('[launchGame] Intentando iniciar proceso:', exePath)
+    const appProcess = spawn(exePath, [], {
+      shell: true,
+      detached: true // Opcional: para que el proceso no dependa del padre
     })
-    // Evento 'error': Falló al iniciar
+
+    log.info('[launchGame] Proceso creado con PID:', appProcess.pid)
+
     appProcess.on('error', (err) => {
-      mainWindow?.show()
+      log.error('[launchGame] Error al iniciar el proceso:', err)
+
+      if (mainWindow) {
+        log.info('[launchGame] Mostrando ventana principal debido al error')
+        mainWindow.show()
+      }
+
+      log.info('[launchGame] Enviando evento launch-end con error')
       event.sender.send('launch-end', {
         id: game.id,
         success: false,
@@ -398,14 +411,31 @@ app.whenReady().then(() => {
       })
     })
 
-    // Evento 'close': La aplicación se cerró
-    appProcess.on('close', (code) => {
-      mainWindow?.show()
+    appProcess.on('close', (code, signal) => {
+      log.info(`[launchGame] Proceso cerrado. Código: ${code}, Señal: ${signal}`)
+
+      if (mainWindow) {
+        log.info('[launchGame] Mostrando ventana principal')
+        mainWindow.show()
+      }
+
+      // Modificación: Cambiar success a false si el código de salida no es 0
+      const success = code === 0
+      log.info(`[launchGame] Enviando evento launch-end con ${success ? 'éxito' : 'fallo'}`)
       event.sender.send('launch-end', {
         id: game.id,
-        success: true,
-        code: code
+        success: success,
+        code: code,
+        signal: signal
       })
+    })
+
+    appProcess.stdout?.on('data', (data) => {
+      log.info(`[launchGame] stdout: ${data.toString().trim()}`)
+    })
+
+    appProcess.stderr?.on('data', (data) => {
+      log.info(`[launchGame] stderr: ${data.toString().trim()}`)
     })
   })
 

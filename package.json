@@ -1,7 +1,7 @@
 {
   "name": "secrecy-launcher",
   "productName": "Secrecy Launcher",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Secrecy Launcher",
   "main": "./out/main/index.js",
   "author": "Secrecy",
@@ -53,6 +53,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^16.4.7",
+    "electron-log": "^5.3.3",
     "electron-store": "^7.0.3",
     "electron-updater": "^6.3.9",
     "framer-motion": "^12.6.2",
