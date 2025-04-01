@@ -9,6 +9,7 @@ import { InstallDialog } from '@/components/install-dialog'
 import { UninstallDialog } from '@/components/uninstall-dialog'
 import { GameCard } from '@/components/game-card'
 import { ErrorDisplay } from '@/components/error'
+import { SteamRequirementNotification } from '@/components/require-steam'
 
 export function GameLibrary() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -19,6 +20,7 @@ export function GameLibrary() {
   const [gameData, setGameData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [steamRequiredOpen, setSteamRequiredOpen] = useState('')
 
   // Función para cargar los datos de juegos desde la API
   const fetchGameData = async () => {
@@ -91,6 +93,14 @@ export function GameLibrary() {
 
   useEffect(() => {
     loadPersistedGameData()
+  }, [])
+
+  useEffect(() => {
+    window.electron.ipcRenderer.on('launch-end', (event, data) => {
+      if (data.error && data.requireSteam) {
+        setSteamRequiredOpen(data.game)
+      }
+    })
   }, [])
 
   // Actualizar el estado guardado cada vez que gameData cambie
@@ -326,6 +336,13 @@ export function GameLibrary() {
             onConfirm={() => completeUninstallation(selectedGame.id)}
           />
         </>
+      )}
+      {steamRequiredOpen && (
+        <SteamRequirementNotification
+          game={steamRequiredOpen}
+          onClose={() => setSteamRequiredOpen('')}
+          onContinue={() => window.electron.ipcRenderer.send('launchGame', steamRequiredOpen)}
+        />
       )}
     </div>
   )

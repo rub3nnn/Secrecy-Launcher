@@ -383,6 +383,36 @@ app.whenReady().then(() => {
       log.warn('[launchGame] mainWindow no está definido')
     }
 
+    // Verificar si requiere Steam y si está instalado
+    if (game.requireSteam) {
+      log.info('[launchGame] El juego requiere Steam, verificando instalación...')
+      try {
+        // Buscar Steam en las ubicaciones comunes
+        const steamPath = getSteamPath()
+        if (!steamPath) {
+          //!
+          throw new Error('Steam no está instalado o no se pudo encontrar')
+        }
+        log.info('[launchGame] Steam encontrado en:', steamPath)
+      } catch (error: any) {
+        log.error('[launchGame] Error al verificar Steam:', error)
+
+        if (mainWindow) {
+          log.info('[launchGame] Mostrando ventana principal debido al error')
+          mainWindow.show()
+        }
+
+        event.sender.send('launch-end', {
+          id: game.id,
+          success: false,
+          requireSteam: true,
+          error: error.message,
+          game: game
+        })
+        return // Salir temprano si no hay Steam
+      }
+    }
+
     // Modificación importante: Escapar las rutas con espacios
     const exePath = game.exePath.includes(' ') ? `"${game.exePath}"` : game.exePath
     log.info('[launchGame] Ruta del ejecutable procesada:', exePath)
@@ -390,7 +420,7 @@ app.whenReady().then(() => {
     log.info('[launchGame] Intentando iniciar proceso:', exePath)
     const appProcess = spawn(exePath, [], {
       shell: true,
-      detached: true // Opcional: para que el proceso no dependa del padre
+      detached: false // Opcional: para que el proceso no dependa del padre
     })
 
     log.info('[launchGame] Proceso creado con PID:', appProcess.pid)
@@ -437,6 +467,109 @@ app.whenReady().then(() => {
     appProcess.stderr?.on('data', (data) => {
       log.info(`[launchGame] stderr: ${data.toString().trim()}`)
     })
+  })
+
+  // Función auxiliar para encontrar la instalación de Steam
+  function getSteamPath(): string | null {
+    // Buscar en ubicaciones comunes de Steam
+    const platform = process.platform
+    const steamPaths = {
+      win32: [
+        process.env['ProgramFiles(x86)'] + '\\Steam\\steam.exe',
+        process.env.ProgramFiles + '\\Steam\\steam.exe',
+        'C:\\Program Files (x86)\\Steam\\steam.exe',
+        'C:\\Program Files\\Steam\\steam.exe'
+      ],
+      darwin: ['/Applications/Steam.app/Contents/MacOS/steam_osx'],
+      linux: [
+        '/usr/bin/steam',
+        '/usr/local/bin/steam',
+        path.join(process.env.HOME as string, '.steam', 'steam', 'steam.sh')
+      ]
+    }
+
+    const pathsToCheck = steamPaths[platform as keyof typeof steamPaths] || []
+    for (const steamPath of pathsToCheck) {
+      if (fs.existsSync(steamPath)) {
+        return steamPath
+      }
+    }
+
+    return null
+  }
+
+  ipcMain.on('install-steam', async (event) => {
+    log.info('Starting Steam installation')
+
+    const downloadPath = path.join(app.getPath('userData'), 'steam-install')
+    const steamUrl = 'https://cdn.fastly.steamstatic.com/client/installer/SteamSetup.exe'
+
+    ensureDirectory(downloadPath)
+
+    const dl = new DownloaderHelper(steamUrl, downloadPath, {
+      retry: { maxRetries: 3, delay: 3000 },
+      override: true,
+      fileName: 'SteamSetup.exe'
+    })
+
+    // Eventos de descarga
+    dl.on('download', () => {
+      log.info('Steam download started')
+      event.sender.send('steam-download-started')
+    })
+
+    dl.on('progress', (stats) => {
+      const progress = Math.floor(stats.progress)
+      log.info(`Steam download progress: ${progress}%`)
+
+      event.sender.send('steam-download-progress', {
+        progress,
+        speed: stats.speed,
+        downloaded: stats.downloaded,
+        total: stats.total
+      })
+    })
+
+    dl.on('end', async (downloadInfo) => {
+      log.info('Steam download completed')
+      event.sender.send('steam-download-complete')
+
+      try {
+        log.info('Steam installation complete')
+        event.sender.send('steam-install-complete', {
+          installPath: downloadPath,
+          executablePath: downloadInfo.filePath
+        })
+        const exePath = downloadInfo.filePath.includes(' ')
+          ? `"${downloadInfo.filePath}"`
+          : downloadInfo.filePath
+        spawn(exePath, [], {
+          shell: true,
+          detached: false // Opcional: para que el proceso no dependa del padre
+        })
+      } catch (error: any) {
+        log.error('Steam installation error:', error)
+        event.sender.send('steam-install-error', {
+          error: error.message || 'Error durante la instalación'
+        })
+      }
+    })
+
+    dl.on('error', (err) => {
+      log.error('Steam download error:', err)
+      event.sender.send('steam-download-error', {
+        error: err.message
+      })
+    })
+
+    try {
+      await dl.start()
+    } catch (err: any) {
+      log.error('Error starting Steam download:', err)
+      event.sender.send('steam-download-error', {
+        error: err.message
+      })
+    }
   })
 
   createWindow()
