@@ -471,30 +471,23 @@ app.whenReady().then(() => {
 
   // Función auxiliar para encontrar la instalación de Steam
   function getSteamPath(): string | null {
-    // Buscar en ubicaciones comunes de Steam
-    const platform = process.platform
-    const steamPaths = {
-      win32: [
-        process.env['ProgramFiles(x86)'] + '\\Steam\\steam.exe',
-        process.env.ProgramFiles + '\\Steam\\steam.exe',
-        'C:\\Program Files (x86)\\Steam\\steam.exe',
-        'C:\\Program Files\\Steam\\steam.exe'
-      ],
-      darwin: ['/Applications/Steam.app/Contents/MacOS/steam_osx'],
-      linux: [
-        '/usr/bin/steam',
-        '/usr/local/bin/steam',
-        path.join(process.env.HOME as string, '.steam', 'steam', 'steam.sh')
-      ]
-    }
+    // Solo verificar rutas de Windows
+    const winPaths = [
+      process.env['ProgramFiles(x86)'] + '\\Steam\\steam.exe',
+      process.env.ProgramFiles + '\\Steam\\steam.exe',
+      'C:\\Program Files (x86)\\Steam\\steam.exe',
+      'C:\\Program Files\\Steam\\steam.exe'
+    ]
 
-    const pathsToCheck = steamPaths[platform as keyof typeof steamPaths] || []
-    for (const steamPath of pathsToCheck) {
-      if (fs.existsSync(steamPath)) {
-        return steamPath
+    for (const steamPath of winPaths) {
+      try {
+        if (fs.existsSync(steamPath)) {
+          return steamPath
+        }
+      } catch (e) {
+        log.warn(`[getSteamPath] Error al verificar ruta ${steamPath}:`, e)
       }
     }
-
     return null
   }
 

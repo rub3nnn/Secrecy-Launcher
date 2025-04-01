@@ -341,7 +341,12 @@ export function GameLibrary() {
         <SteamRequirementNotification
           game={steamRequiredOpen}
           onClose={() => setSteamRequiredOpen('')}
-          onContinue={() => window.electron.ipcRenderer.send('launchGame', steamRequiredOpen)}
+          onContinue={() =>
+            window.electron.ipcRenderer.send('launchGame', {
+              ...steamRequiredOpen,
+              requireSteam: false
+            })
+          }
         />
       )}
     </div>
