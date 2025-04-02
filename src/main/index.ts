@@ -63,10 +63,6 @@ function createWindow(): void {
 function setupAutoUpdater(): void {
   const token = getGitHubToken()
 
-  if (is.dev) {
-    autoUpdater.forceDevUpdateConfig = true
-  }
-
   if (!token && !is.dev) {
     log.error('No se encontró token de GitHub para el auto-updater')
     return

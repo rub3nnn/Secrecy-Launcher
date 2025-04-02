@@ -13,7 +13,9 @@ export function SteamRequirementNotification({ game, onClose, onContinue }) {
   const [waiting, setWaiting] = useState(false)
 
   useEffect(() => {
+    setIsVisible(true)
     setWaiting(false)
+    setIsInstalling(false)
     window.electron.ipcRenderer.on('steam-download-progress', (event, data) => {
       setProgress(data.progress)
     })

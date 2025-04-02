@@ -1,12 +1,14 @@
-import { Download, Home, Library } from 'lucide-react'
+import { Download, Home, Library, User } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { SecrecyLogo } from '@/components/logo'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 export function SidebarNav() {
+  const steamUser = window.steamAPI.getRecentUser()
   return (
     <div className="flex h-full w-80 flex-col border-r bg-card">
       <div className="p-4">
@@ -63,6 +65,24 @@ export function SidebarNav() {
           </div>
         </div>
       </ScrollArea>
+      {steamUser && (
+        <div className="p-4 border-t">
+          <div className="flex items-center gap-3">
+            <Avatar className="h-9 w-9">
+              <AvatarImage src={steamUser.avatar} />
+              <AvatarFallback className="bg-primary/10">
+                <User className="h-4 w-4" />
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{steamUser.accountName}</p>
+              <div className="flex items-center text-xs text-muted-foreground">
+                <span className="truncate">Conectado con Steam</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

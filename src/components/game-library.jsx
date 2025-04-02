@@ -99,6 +99,7 @@ export function GameLibrary() {
     window.electron.ipcRenderer.on('launch-end', (event, data) => {
       if (data.error && data.requireSteam) {
         setSteamRequiredOpen(data.game)
+        setSelectedGame(null)
       }
     })
   }, [])
@@ -341,12 +342,13 @@ export function GameLibrary() {
         <SteamRequirementNotification
           game={steamRequiredOpen}
           onClose={() => setSteamRequiredOpen('')}
-          onContinue={() =>
+          onContinue={() => {
             window.electron.ipcRenderer.send('launchGame', {
               ...steamRequiredOpen,
               requireSteam: false
             })
-          }
+            setSteamRequiredOpen('')
+          }}
         />
       )}
     </div>
