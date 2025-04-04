@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { motion, AnimatePresence } from 'framer-motion'
 
-export function SteamRequirementNotification({ game, onClose, onContinue }) {
+export function SteamRequirementNotification({ game, onClose, onContinue, mode }) {
   const [isVisible, setIsVisible] = useState(true)
   const [isInstalling, setIsInstalling] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -42,6 +42,16 @@ export function SteamRequirementNotification({ game, onClose, onContinue }) {
     setIsInstalling(true)
     setProgress(0)
     window.electron.ipcRenderer.send('install-steam')
+  }
+
+  const handleOpenSteam = async () => {
+    setWaiting(true)
+    const result = await window.electron.ipcRenderer.invoke('open-steam')
+    if (result.success) {
+      onContinue()
+    } else {
+      console.error('Error:', result.error)
+    }
   }
 
   return (
@@ -89,8 +99,9 @@ export function SteamRequirementNotification({ game, onClose, onContinue }) {
                     </div>
 
                     <p className="text-muted-foreground mb-4">
-                      Para jugar a {game.title} es necesario tener Steam instalado. No hemos
-                      detectado Steam en tu sistema.
+                      Para jugar a {game.title} es necesario tener Steam{' '}
+                      {mode === 'install' ? 'instalado' : 'iniciado'}. No hemos detectado Steam{' '}
+                      {mode === 'install' ? '' : 'iniciado'} en tu sistema.
                     </p>
 
                     {!isInstalling ? (
@@ -108,13 +119,23 @@ export function SteamRequirementNotification({ game, onClose, onContinue }) {
                           <Button variant="outline" className="flex-1" onClick={handleContinue}>
                             Continuar de todos modos
                           </Button>
-                          <Button
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                            onClick={handleInstallSteam}
-                          >
-                            <Download className="h-4 w-4 mr-2" />
-                            Instalar Steam
-                          </Button>
+                          {mode === 'install' ? (
+                            <Button
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                              onClick={handleInstallSteam}
+                            >
+                              <Download className="h-4 w-4 mr-2" />
+                              Instalar Steam
+                            </Button>
+                          ) : (
+                            <Button
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                              onClick={handleOpenSteam}
+                            >
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              Abrir Steam
+                            </Button>
+                          )}
                         </div>
 
                         <div className="text-center">

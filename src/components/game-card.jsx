@@ -42,6 +42,23 @@ export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggle
     }
   }, [isHovered, game.backgroundVideo, videoLoaded])
 
+  const haceCuanto = (fecha = 0) => {
+    if (fecha === 0) return 'Nunca'
+    const dif = Math.floor((Date.now() - fecha) / 1000)
+    if (dif < 60) return 'Ahora'
+
+    const m = [
+      { v: 31536000, t: 'año' },
+      { v: 2592000, t: 'mes', p: 'meses' },
+      { v: 86400, t: 'día' },
+      { v: 3600, t: 'hora' },
+      { v: 60, t: 'minuto' }
+    ].find((i) => dif >= i.v)
+
+    const n = Math.floor(dif / m.v)
+    return `Hace ${n} ${n === 1 ? m.t : m.p || m.t + 's'}`
+  }
+
   // Reset video state when hover ends
   useEffect(() => {
     if (!isHovered) {
@@ -124,7 +141,9 @@ export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggle
                 <Badge variant="secondary">{game.genre}</Badge>
                 {!game.url && <Badge>Próximamente disponible</Badge>}
                 <span className="text-sm text-white/80">
-                  {game.installed ? `${game.size} • ${game.lastPlayed}` : `Tamaño: ${game.size}`}
+                  {game.installed
+                    ? `${game.size} • ${haceCuanto(game.lastPlayed)}`
+                    : `Tamaño: ${game.size}`}
                 </span>
               </div>
             </div>

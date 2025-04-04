@@ -1,7 +1,7 @@
 {
   "name": "secrecy-launcher",
   "productName": "Secrecy Launcher",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "Secrecy Launcher",
   "main": "./out/main/index.js",
   "author": "Secrecy",

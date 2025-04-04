@@ -1,14 +1,33 @@
-import { Download, Home, Library, User } from 'lucide-react'
-
+import { Download, Home, Library, User, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { SecrecyLogo } from '@/components/logo'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { useEffect } from 'react'
 
-export function SidebarNav() {
+export function SidebarNav(hola, isLoading) {
+  const recentGames =
+    hola.hola.sort((a, b) => new Date(b.lastPlayed) - new Date(a.lastPlayed)) || []
   const steamUser = window.steamAPI.getRecentUser()
+  const haceCuanto = (fecha = 0) => {
+    if (fecha === 0) return 'Nunca'
+    const dif = Math.floor((Date.now() - fecha) / 1000)
+    if (dif < 60) return 'Ahora'
+
+    const m = [
+      { v: 31536000, t: 'año' },
+      { v: 2592000, t: 'mes', p: 'meses' },
+      { v: 86400, t: 'día' },
+      { v: 3600, t: 'hora' },
+      { v: 60, t: 'minuto' }
+    ].find((i) => dif >= i.v)
+
+    const n = Math.floor(dif / m.v)
+    return `Hace ${n} ${n === 1 ? m.t : m.p || m.t + 's'}`
+  }
+
   return (
     <div className="flex h-full w-80 flex-col border-r bg-card">
       <div className="p-4">
@@ -38,30 +57,64 @@ export function SidebarNav() {
             </Button>
           </nav>
           <Separator className="my-4" />
-          <div className="space-y-1">
-            <h3 className="text-sm font-medium">Colecciones</h3>
-            <div className="text-xs text-muted-foreground italic mb-2">
-              Más colecciones estarán disponibles cuando tengas más juegos
+          <div className="space-y-3">
+            <div className="flex items-center">
+              <h3 className="text-sm font-medium flex items-center">
+                <Clock className="h-4 w-4 mr-2" />
+                Jugados recientemente
+              </h3>
             </div>
-            <nav className="grid gap-1">
-              <Button variant="ghost" size="sm" className="justify-start">
-                Todos los juegos
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="justify-start text-muted-foreground"
-                disabled
-              >
-                <span className="flex-grow text-left">Jugados recientemente</span>
-                <Badge variant="outline" className="ml-auto text-xs whitespace-nowrap px-1.5 py-0">
-                  Próximamente
-                </Badge>
-              </Button>
-              <Button variant="ghost" size="sm" className="justify-start">
-                Favoritos
-              </Button>
-            </nav>
+            <div className="space-y-2">
+              {!isLoading ? (
+                <div className="flex items-center justify-center h-16">
+                  <p className="text-muted-foreground">Cargando...</p>
+                </div>
+              ) : (
+                recentGames &&
+                recentGames.map((game) => {
+                  if (game.installed) {
+                    return (
+                      <div
+                        key={game.id}
+                        onClick={() => {
+                          window.electron.ipcRenderer.send('launchGame', game)
+                        }}
+                        className="block relative h-16 rounded-md overflow-hidden group cursor-pointer"
+                      >
+                        {/* Imagen de fondo */}
+                        <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-110">
+                          <img
+                            src={game.banner}
+                            alt={game.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+
+                        {/* Gradiente para mejorar legibilidad */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-black/40 opacity-80 group-hover:opacity-90 transition-opacity"></div>
+
+                        {/* Contenido */}
+                        <div className="absolute inset-0 p-3 flex flex-col justify-end">
+                          <p className="text-sm font-medium text-white truncate group-hover:text-primary-foreground transition-colors">
+                            {game.title}
+                          </p>
+                          <div className="flex items-center">
+                            <p className="text-xs text-white/70 group-hover:text-white transition-colors">
+                              {haceCuanto(game.lastPlayed || 0)}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Borde brillante en hover */}
+                        <div className="absolute inset-0 border border-transparent group-hover:border-primary/50 rounded-md transition-colors"></div>
+                      </div>
+                    )
+                  } else {
+                    return null
+                  }
+                })
+              )}
+            </div>
           </div>
         </div>
       </ScrollArea>
@@ -75,7 +128,7 @@ export function SidebarNav() {
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{steamUser.accountName}</p>
+              <p className="text-sm font-medium truncate">{steamUser.personaName}</p>
               <div className="flex items-center text-xs text-muted-foreground">
                 <span className="truncate">Conectado con Steam</span>
               </div>

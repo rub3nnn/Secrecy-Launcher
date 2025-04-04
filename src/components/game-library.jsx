@@ -1,5 +1,3 @@
-'use client'
-
 import { useState, useEffect } from 'react'
 import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -11,105 +9,34 @@ import { GameCard } from '@/components/game-card'
 import { ErrorDisplay } from '@/components/error'
 import { SteamRequirementNotification } from '@/components/require-steam'
 
-export function GameLibrary() {
+export function GameLibrary({ gameData, setGameData, isLoading, error }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedGame, setSelectedGame] = useState(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [isInstallOpen, setIsInstallOpen] = useState(false)
   const [isUninstallOpen, setIsUninstallOpen] = useState(false)
-  const [gameData, setGameData] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [steamRequiredOpen, setSteamRequiredOpen] = useState('')
-
-  // Función para cargar los datos de juegos desde la API
-  const fetchGameData = async () => {
-    try {
-      const response = await fetch(
-        'https://secrecyfiles.github.io/fileshoster/secrecylauncher/data.json'
-      )
-      if (!response.ok) {
-        throw new Error('No se pudo cargar los datos de los juegos')
-      }
-      const data = await response.json()
-      return data
-    } catch (err) {
-      console.error('Error al cargar los datos:', err)
-      throw err
-    }
-  }
-
-  // Función para cargar los datos persistentes de los juegos
-  const loadPersistedGameData = async () => {
-    try {
-      // Cargar los datos base del juego desde la API
-      const baseGameData = await fetchGameData()
-
-      // Cargar los estados persistentes (solo los que han cambiado)
-      const persistedData =
-        (await window.electron.ipcRenderer.invoke('storageGet', 'gamesState')) || {}
-
-      // Combinar los datos base con los persistentes (solo para juegos modificados)
-      const mergedGameData = baseGameData.map((game) => {
-        // Si existe data persistente para este juego, la usamos
-        if (persistedData[game.id]) {
-          return {
-            ...game,
-            ...persistedData[game.id] // Solo sobrescribe las propiedades que han cambiado
-          }
-        }
-        return game // Si no hay cambios, devuelve el juego original
-      })
-
-      setGameData(mergedGameData)
-      setIsLoading(false)
-    } catch (error) {
-      console.error('Error loading game data:', error)
-      setError('No se pudieron cargar los juegos. Por favor, intenta más tarde.')
-      setIsLoading(false)
-    }
-  }
-
-  // Función para guardar solo los estados modificados de los juegos
-  const saveGamesState = async (games) => {
-    try {
-      const gamesState = games.reduce((acc, game) => {
-        acc[game.id] = {
-          installed: game.installed,
-          favorite: game.favorite,
-          installPath: game.installPath,
-          lastPlayed: game.lastPlayed,
-          progress: game.progress,
-          exePath: game.exePath
-        }
-        return acc
-      }, {})
-
-      await window.electron.ipcRenderer.invoke('storageSet', 'gamesState', gamesState)
-    } catch (error) {
-      console.error('Error saving games state:', error)
-    }
-  }
-
-  useEffect(() => {
-    loadPersistedGameData()
-  }, [])
+  const [steamRequiredMode, setSteamRequiredMode] = useState('')
 
   useEffect(() => {
     window.electron.ipcRenderer.on('launch-end', (event, data) => {
+      setGameData((prev) =>
+        prev.map((game) =>
+          game.id === data.id
+            ? {
+                ...game,
+                lastPlayed: Date.now()
+              }
+            : game
+        )
+      )
       if (data.error && data.requireSteam) {
         setSteamRequiredOpen(data.game)
+        setSteamRequiredMode(data.steamRequiredMode)
         setSelectedGame(null)
       }
     })
   }, [])
-
-  // Actualizar el estado guardado cada vez que gameData cambie
-  useEffect(() => {
-    if (!isLoading && gameData.length > 0) {
-      saveGamesState(gameData)
-    }
-  }, [gameData, isLoading])
 
   const filteredGames = gameData.filter((game) =>
     game.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -133,7 +60,6 @@ export function GameLibrary() {
               ...game,
               installed: true,
               installPath: installPath || game.installPath,
-              lastPlayed: 'Nunca',
               progress: 0,
               exePath: exePath || ''
             }
@@ -163,7 +89,6 @@ export function GameLibrary() {
                 ...g,
                 installed: false,
                 installPath: '',
-                lastPlayed: 'Nunca',
                 progress: 0
               }
             : g
@@ -203,9 +128,7 @@ export function GameLibrary() {
   }
 
   if (error) {
-    return (
-      <ErrorDisplay error={error} /> // Asumiendo que tienes un componente ErrorDisplay
-    )
+    return <ErrorDisplay error={error} />
   }
 
   return (
@@ -341,6 +264,7 @@ export function GameLibrary() {
       {steamRequiredOpen && (
         <SteamRequirementNotification
           game={steamRequiredOpen}
+          mode={steamRequiredMode}
           onClose={() => setSteamRequiredOpen('')}
           onContinue={() => {
             window.electron.ipcRenderer.send('launchGame', {

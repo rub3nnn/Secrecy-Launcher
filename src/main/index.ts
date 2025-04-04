@@ -367,11 +367,27 @@ app.whenReady().then(() => {
     }
   })
 
-  const { spawn } = require('child_process')
+  const { spawn, exec } = require('child_process')
 
-  ipcMain.on('launchGame', (event, game: any) => {
+  // Función auxiliar para verificar si Steam está en ejecución (Windows)
+  function isSteamRunning(): Promise<boolean> {
+    return new Promise((resolve) => {
+      exec('tasklist', (error, stdout) => {
+        if (error) {
+          log.error('[isSteamRunning] Error al listar procesos:', error)
+          resolve(false)
+        } else {
+          const isRunning = stdout.toLowerCase().includes('steam.exe')
+          resolve(isRunning)
+        }
+      })
+    })
+  }
+
+  ipcMain.on('launchGame', async (event, game: any) => {
     log.info('[launchGame] Evento recibido. Juego:', game)
 
+    // Ocultar ventana principal al iniciar
     if (mainWindow) {
       log.info('[launchGame] Ocultando ventana principal')
       mainWindow.hide()
@@ -379,57 +395,64 @@ app.whenReady().then(() => {
       log.warn('[launchGame] mainWindow no está definido')
     }
 
-    // Verificar si requiere Steam y si está instalado
+    // --- Verificación de Steam (si es requerido) ---
     if (game.requireSteam) {
-      log.info('[launchGame] El juego requiere Steam, verificando instalación...')
+      log.info('[launchGame] El juego requiere Steam, verificando...')
+
       try {
-        // Buscar Steam en las ubicaciones comunes
+        // 1. Verificar instalación
         const steamPath = getSteamPath()
         if (!steamPath) {
-          //!
-          throw new Error('Steam no está instalado o no se pudo encontrar')
+          throw new Error('install') // Lanzar error especial para instalación
         }
         log.info('[launchGame] Steam encontrado en:', steamPath)
-      } catch (error: any) {
-        log.error('[launchGame] Error al verificar Steam:', error)
 
-        if (mainWindow) {
-          log.info('[launchGame] Mostrando ventana principal debido al error')
-          mainWindow.show()
+        // 2. Verificar si está en ejecución
+        const steamRunning = await isSteamRunning()
+        if (!steamRunning) {
+          throw new Error('running') // Lanzar error especial para ejecución
         }
+        log.info('[launchGame] Steam está en ejecución.')
+      } catch (error: any) {
+        log.error('[launchGame] Error en Steam:', error.message)
 
+        // Determinar el modo requerido
+        const requireSteamMode = error.message.includes('install') ? 'install' : 'running'
+
+        // Enviar respuesta de error
         event.sender.send('launch-end', {
           id: game.id,
           success: false,
           requireSteam: true,
-          error: error.message,
+          requireSteamMode: requireSteamMode, // 'install' o 'running'
+          error:
+            requireSteamMode === 'install'
+              ? 'Steam no está instalado'
+              : 'Steam no está en ejecución',
           game: game
         })
-        return // Salir temprano si no hay Steam
+
+        // Mostrar ventana principal si existe
+        if (mainWindow) mainWindow.show()
+        return
       }
     }
 
-    // Modificación importante: Escapar las rutas con espacios
+    // --- Lanzar el juego ---
     const exePath = game.exePath.includes(' ') ? `"${game.exePath}"` : game.exePath
-    log.info('[launchGame] Ruta del ejecutable procesada:', exePath)
+    log.info('[launchGame] Iniciando juego:', exePath)
 
-    log.info('[launchGame] Intentando iniciar proceso:', exePath)
     const appProcess = spawn(exePath, [], {
       shell: true,
-      detached: false // Opcional: para que el proceso no dependa del padre
+      detached: false
     })
 
-    log.info('[launchGame] Proceso creado con PID:', appProcess.pid)
+    log.info('[launchGame] Proceso del juego PID:', appProcess.pid)
 
+    // Manejo de errores
     appProcess.on('error', (err) => {
-      log.error('[launchGame] Error al iniciar el proceso:', err)
-
-      if (mainWindow) {
-        log.info('[launchGame] Mostrando ventana principal debido al error')
-        mainWindow.show()
-      }
-
-      log.info('[launchGame] Enviando evento launch-end con error')
+      log.error('[launchGame] Error al iniciar:', err)
+      if (mainWindow) mainWindow.show()
       event.sender.send('launch-end', {
         id: game.id,
         success: false,
@@ -437,31 +460,25 @@ app.whenReady().then(() => {
       })
     })
 
+    // Cuando el juego se cierra
     appProcess.on('close', (code, signal) => {
-      log.info(`[launchGame] Proceso cerrado. Código: ${code}, Señal: ${signal}`)
-
-      if (mainWindow) {
-        log.info('[launchGame] Mostrando ventana principal')
-        mainWindow.show()
-      }
-
-      // Modificación: Cambiar success a false si el código de salida no es 0
-      const success = code === 0
-      log.info(`[launchGame] Enviando evento launch-end con ${success ? 'éxito' : 'fallo'}`)
+      log.info(`[launchGame] Juego cerrado. Código: ${code}, Señal: ${signal}`)
+      if (mainWindow) mainWindow.show()
       event.sender.send('launch-end', {
         id: game.id,
-        success: success,
+        success: code === 0,
         code: code,
         signal: signal
       })
     })
 
+    // Opcional: Logs de consola del juego
     appProcess.stdout?.on('data', (data) => {
       log.info(`[launchGame] stdout: ${data.toString().trim()}`)
     })
 
     appProcess.stderr?.on('data', (data) => {
-      log.info(`[launchGame] stderr: ${data.toString().trim()}`)
+      log.error(`[launchGame] stderr: ${data.toString().trim()}`)
     })
   })
 
@@ -485,6 +502,66 @@ app.whenReady().then(() => {
       }
     }
     return null
+  }
+
+  ipcMain.handle('open-steam', async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const steamPath = getSteamPath()
+      if (!steamPath) {
+        return { success: false, error: 'Steam no está instalado' }
+      }
+
+      // 1. Iniciar Steam minimizado
+      const command = `"${steamPath}" -silent -nochatui`
+      spawn(command, [], {
+        shell: true,
+        detached: true,
+        windowsHide: true
+      })
+
+      // 2. Esperar a que Steam esté completamente inicializado
+      const isReady = await waitForFullSteamStart(15000) // 15 segundos máximo
+      return {
+        success: isReady,
+        error: isReady ? undefined : 'Steam no completó su inicialización'
+      }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  // Función mejorada de espera
+  async function waitForFullSteamStart(timeout: number): Promise<boolean> {
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < timeout) {
+      // Verificar tanto el proceso como la ventana principal
+      const [processRunning, windowExists] = await Promise.all([
+        isSteamRunning(),
+        checkSteamWindowExists()
+      ])
+
+      if (processRunning && windowExists) {
+        return true // Steam completamente inicializado
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500)) // Polling cada 500ms
+    }
+
+    return false // Timeout alcanzado
+  }
+
+  // Verifica si existe la ventana principal de Steam (Windows API)
+  async function checkSteamWindowExists(): Promise<boolean> {
+    try {
+      const { execSync } = require('child_process')
+      const stdout = execSync(
+        'tasklist /FI "IMAGENAME eq steam.exe" /FI "WINDOWTITLE ne N/A" /NH'
+      ).toString()
+      return stdout.includes('steam.exe')
+    } catch {
+      return false
+    }
   }
 
   ipcMain.on('install-steam', async (event) => {
@@ -558,6 +635,23 @@ app.whenReady().then(() => {
       event.sender.send('steam-download-error', {
         error: err.message
       })
+    }
+  })
+
+  ipcMain.handle('fetchGameData', async () => {
+    log.info('Fetching game data...')
+    try {
+      const response = await fetch(
+        'https://secrecyfiles.github.io/fileshoster/secrecylauncher/data.json'
+      )
+      if (!response.ok) {
+        throw new Error('No se pudo cargar los datos de los juegos')
+      }
+      const data = await response.json()
+      return data
+    } catch (err) {
+      console.error('Error al cargar los datos:', err)
+      throw err
     }
   })
 
