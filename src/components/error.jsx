@@ -3,7 +3,7 @@
 import { AlertCircle, RefreshCw, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-export function ErrorDisplay({ error }) {
+export function ErrorDisplay({ error, retry }) {
   return (
     <div className="w-full h-full flex flex-col items-center justify-center p-6">
       <div className="max-w-md w-full bg-card border border-destructive/20 rounded-lg shadow-lg overflow-hidden">
@@ -41,7 +41,7 @@ export function ErrorDisplay({ error }) {
               <WifiOff className="h-4 w-4 mr-2" />
               Modo sin conexión
             </Button>
-            <Button className="flex-1" disabled>
+            <Button className="flex-1" onClick={retry}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Reintentar conexión
             </Button>

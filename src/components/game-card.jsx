@@ -43,7 +43,7 @@ export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggle
   }, [isHovered, game.backgroundVideo, videoLoaded])
 
   const haceCuanto = (fecha = 0) => {
-    if (fecha === 0) return 'Nunca'
+    if (fecha === 0 || typeof fecha != 'number') return 'Nunca'
     const dif = Math.floor((Date.now() - fecha) / 1000)
     if (dif < 60) return 'Ahora'
 

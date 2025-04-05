@@ -9,7 +9,7 @@ import { GameCard } from '@/components/game-card'
 import { ErrorDisplay } from '@/components/error'
 import { SteamRequirementNotification } from '@/components/require-steam'
 
-export function GameLibrary({ gameData, setGameData, isLoading, error }) {
+export function GameLibrary({ gameData, setGameData, isLoading, error, handleRetry }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedGame, setSelectedGame] = useState(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
@@ -128,31 +128,34 @@ export function GameLibrary({ gameData, setGameData, isLoading, error }) {
   }
 
   if (error) {
-    return <ErrorDisplay error={error} />
+    return <ErrorDisplay error={error} retry={handleRetry} />
   }
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 p-6">
+      <div className="flex-1 pb-6 pt-0 px-5">
         <Tabs defaultValue="all">
-          <div className="flex justify-between items-center mb-6">
-            <TabsList>
-              <TabsTrigger value="all">Todos los juegos</TabsTrigger>
-              <TabsTrigger value="installed">Instalados</TabsTrigger>
-              <TabsTrigger value="favorites">Favoritos</TabsTrigger>
-            </TabsList>
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Buscar juegos..."
-                className="pl-8"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+          <div className="sticky top-0 z-10 bg-background pt-4 pb-4 mb-2">
+            <div className="flex justify-between items-center px-1">
+              <TabsList>
+                <TabsTrigger value="all">Todos los juegos</TabsTrigger>
+                <TabsTrigger value="installed">Instalados</TabsTrigger>
+                <TabsTrigger value="favorites">Favoritos</TabsTrigger>
+              </TabsList>
+              <div className="relative w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Buscar juegos..."
+                  className="pl-8"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
             </div>
+            <div className="h-4 bg-gradient-to-b from-background to-transparent absolute left-0 right-0 -bottom-4 z-[-1]"></div>
           </div>
-          <TabsContent value="all" className="m-0">
+          <TabsContent value="all" className="m-0 px-1">
             {filteredGames.length > 0 ? (
               <div className="grid grid-cols-1 gap-6">
                 {filteredGames.map((game) => (
@@ -176,7 +179,7 @@ export function GameLibrary({ gameData, setGameData, isLoading, error }) {
               </div>
             )}
           </TabsContent>
-          <TabsContent value="installed" className="m-0">
+          <TabsContent value="installed" className="m-0  px-1">
             {filteredGames.filter((game) => game.installed).length > 0 ? (
               <div className="grid grid-cols-1 gap-6">
                 {filteredGames
@@ -202,7 +205,7 @@ export function GameLibrary({ gameData, setGameData, isLoading, error }) {
               </div>
             )}
           </TabsContent>
-          <TabsContent value="favorites" className="m-0">
+          <TabsContent value="favorites" className="m-0 px-1">
             {filteredGames.filter((game) => game.favorite).length > 0 ? (
               <div className="grid grid-cols-1 gap-6">
                 {filteredGames

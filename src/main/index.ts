@@ -7,6 +7,7 @@ import { createExtractorFromFile } from 'node-unrar-js'
 import Store from 'electron-store'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
+import AdmZip from 'adm-zip'
 
 // Configuración del logger
 log.transports.file.level = 'info'
@@ -223,34 +224,66 @@ app.whenReady().then(() => {
 
         updateProgressBar(-1)
 
-        const extractor = await createExtractorFromFile({
-          filepath: filePath,
-          targetPath: extractPath
-        })
-
-        const list = extractor.getFileList()
-        const fileHeaders = [...list.fileHeaders]
-        const totalFiles = fileHeaders.length
-
-        if (totalFiles === 0) {
-          throw new Error('El archivo RAR está vacío')
-        }
-
+        let totalFiles = 0
         let extractedFiles = 0
-        const extracted = extractor.extract()
 
-        for (const { fileHeader } of extracted.files) {
-          extractedFiles++
-          const progress = Math.min(99, Math.floor((extractedFiles / totalFiles) * 100))
-
-          event.sender.send('installing-progress', {
-            id: gameData.id,
-            stage: 'extracting',
-            progress: progress,
-            message: `Procesando: ${fileHeader.name} (${extractedFiles}/${totalFiles})`
+        if (filePath.endsWith('.rar')) {
+          // Handle RAR extraction
+          const extractor = await createExtractorFromFile({
+            filepath: filePath,
+            targetPath: extractPath
           })
 
-          updateProgressBar(progress / 100)
+          const list = extractor.getFileList()
+          const fileHeaders = [...list.fileHeaders]
+          totalFiles = fileHeaders.length
+
+          if (totalFiles === 0) {
+            throw new Error('El archivo RAR está vacío')
+          }
+
+          const extracted = extractor.extract()
+
+          for (const { fileHeader } of extracted.files) {
+            extractedFiles++
+            const progress = Math.min(99, Math.floor((extractedFiles / totalFiles) * 100))
+
+            event.sender.send('installing-progress', {
+              id: gameData.id,
+              stage: 'extracting',
+              progress: progress,
+              message: `Procesando: ${fileHeader.name} (${extractedFiles}/${totalFiles})`
+            })
+
+            updateProgressBar(progress / 100)
+          }
+        } else if (filePath.endsWith('.zip')) {
+          // Handle ZIP extraction
+          const zip = new AdmZip(filePath)
+          const zipEntries = zip.getEntries()
+          totalFiles = zipEntries.length
+
+          if (totalFiles === 0) {
+            throw new Error('El archivo ZIP está vacío')
+          }
+
+          zipEntries.forEach((entry) => {
+            extractedFiles++
+            const progress = Math.min(99, Math.floor((extractedFiles / totalFiles) * 100))
+
+            event.sender.send('installing-progress', {
+              id: gameData.id,
+              stage: 'extracting',
+              progress: progress,
+              message: `Procesando: ${entry.entryName} (${extractedFiles}/${totalFiles})`
+            })
+
+            updateProgressBar(progress / 100)
+          })
+
+          zip.extractAllTo(extractPath, true)
+        } else {
+          throw new Error('Formato de archivo no soportado para extracción')
         }
 
         log.info('Extraction complete')
@@ -275,7 +308,7 @@ app.whenReady().then(() => {
         updateProgressBar(-1)
         event.sender.send('installation-error', {
           id: gameData.id,
-          error: error.message || 'Error al extraer el archivo RAR'
+          error: error.message || 'Error al extraer el archivo'
         })
       }
     })

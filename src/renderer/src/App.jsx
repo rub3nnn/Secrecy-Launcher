@@ -35,7 +35,7 @@ function App() {
     } catch (error) {
       console.error('Error loading game data:', error)
       setError('No se pudieron cargar los juegos. Por favor, intenta más tarde.')
-      setIsLoading(false)
+      setIsLoading(true)
     }
   }
 
@@ -73,13 +73,18 @@ function App() {
 
   return (
     <div className="flex h-screen bg-background">
-      <SidebarNav hola={gameData} isLoading={isLoading} />
+      <SidebarNav gameData={gameData} isLoading={isLoading} />
       <main className="flex-1 overflow-auto">
         <GameLibrary
           gameData={gameData}
           setGameData={setGameData}
           isLoading={isLoading}
           error={error}
+          handleRetry={() => {
+            setIsLoading(true)
+            setError(null)
+            loadPersistedGameData()
+          }}
         />
       </main>
       <UpdateNotification />

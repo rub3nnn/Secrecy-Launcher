@@ -1,18 +1,18 @@
-import { Download, Home, Library, User, Clock } from 'lucide-react'
+import { Download, Home, Library, User, Clock, GamepadIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { SecrecyLogo } from '@/components/logo'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { useEffect } from 'react'
 
-export function SidebarNav(hola, isLoading) {
-  const recentGames =
-    hola.hola.sort((a, b) => new Date(b.lastPlayed) - new Date(a.lastPlayed)) || []
+export function SidebarNav({ gameData, isLoading }) {
+  console.log(gameData)
+  const recentGames = [...gameData].sort((a, b) => new Date(b.lastPlayed) - new Date(a.lastPlayed))
   const steamUser = window.steamAPI.getRecentUser()
+
   const haceCuanto = (fecha = 0) => {
-    if (fecha === 0) return 'Nunca'
+    if (fecha === 0 || typeof fecha != 'number') return 'Nunca'
     const dif = Math.floor((Date.now() - fecha) / 1000)
     if (dif < 60) return 'Ahora'
 
@@ -65,12 +65,26 @@ export function SidebarNav(hola, isLoading) {
               </h3>
             </div>
             <div className="space-y-2">
-              {!isLoading ? (
-                <div className="flex items-center justify-center h-16">
-                  <p className="text-muted-foreground">Cargando...</p>
+              {isLoading ? (
+                <div className="space-y-2">
+                  {/* Skeleton loaders para simular carga */}
+                  {[1, 2, 3].map((_, index) => (
+                    <div
+                      key={index}
+                      className="relative h-16 rounded-md overflow-hidden bg-muted animate-pulse"
+                    >
+                      <div className="absolute bottom-3 left-3 w-2/3 h-4 bg-muted-foreground/20 rounded"></div>
+                      <div className="absolute bottom-3 right-3 w-5 h-4 bg-muted-foreground/20 rounded"></div>
+                      <div className="absolute bottom-8 left-3 w-1/3 h-3 bg-muted-foreground/20 rounded"></div>
+                    </div>
+                  ))}
+
+                  <div className="flex items-center justify-center py-2">
+                    <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full"></div>
+                    <span className="ml-2 text-xs text-muted-foreground">Cargando juegos...</span>
+                  </div>
                 </div>
-              ) : (
-                recentGames &&
+              ) : recentGames && recentGames.length > 0 ? (
                 recentGames.map((game) => {
                   if (game.installed) {
                     return (
@@ -113,6 +127,18 @@ export function SidebarNav(hola, isLoading) {
                     return null
                   }
                 })
+              ) : (
+                <div className="bg-muted/40 rounded-lg p-4 text-center">
+                  <div className="flex justify-center mb-2">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <GamepadIcon className="h-6 w-6 text-primary/70" />
+                    </div>
+                  </div>
+                  <h4 className="text-sm font-medium mb-1">No hay juegos recientes</h4>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Instala y juega a tu primer juego para verlo aquí
+                  </p>
+                </div>
               )}
             </div>
           </div>
