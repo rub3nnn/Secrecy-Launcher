@@ -9,7 +9,16 @@ import { GameCard } from '@/components/game-card'
 import { ErrorDisplay } from '@/components/error'
 import { SteamRequirementNotification } from '@/components/require-steam'
 
-export function GameLibrary({ gameData, setGameData, isLoading, error, handleRetry }) {
+export function GameLibrary({
+  gameData,
+  setGameData,
+  isLoading,
+  error,
+  handleRetry,
+  handleErrors,
+  isDownloadsSidebarOpen,
+  setIsDownloadsSidebarOpen
+}) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedGame, setSelectedGame] = useState(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
@@ -19,7 +28,7 @@ export function GameLibrary({ gameData, setGameData, isLoading, error, handleRet
   const [steamRequiredMode, setSteamRequiredMode] = useState('')
 
   useEffect(() => {
-    window.electron.ipcRenderer.on('launch-end', (event, data) => {
+    const handleLaunchEnd = (event, data) => {
       setGameData((prev) =>
         prev.map((game) =>
           game.id === data.id
@@ -30,13 +39,26 @@ export function GameLibrary({ gameData, setGameData, isLoading, error, handleRet
             : game
         )
       )
-      if (data.error && data.requireSteam) {
-        setSteamRequiredOpen(data.game)
-        setSteamRequiredMode(data.steamRequiredMode)
-        setSelectedGame(null)
+
+      if (data.error) {
+        console.log(data.error)
+        if (data.requireSteam) {
+          setSteamRequiredOpen(data.game)
+          setSteamRequiredMode(data.requireSteamMode) // Corregido el nombre de la propiedad
+          setSelectedGame(null)
+        } else {
+          handleErrors(data.error)
+        }
       }
-    })
-  }, [])
+    }
+
+    window.electron.ipcRenderer.on('launch-end', handleLaunchEnd)
+
+    // Función de limpieza
+    return () => {
+      window.electron.ipcRenderer.removeListener('launch-end', handleLaunchEnd)
+    }
+  }, [handleErrors]) // Añadir handleErrors como dependencia o memoizarla
 
   const filteredGames = gameData.filter((game) =>
     game.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -50,23 +72,6 @@ export function GameLibrary({ gameData, setGameData, isLoading, error, handleRet
   const handleUninstall = (gameId) => {
     setSelectedGame(gameData.find((g) => g.id === gameId) || null)
     setIsUninstallOpen(true)
-  }
-
-  const completeInstallation = (gameId, installPath, exePath) => {
-    setGameData((prev) =>
-      prev.map((game) =>
-        game.id === gameId
-          ? {
-              ...game,
-              installed: true,
-              installPath: installPath || game.installPath,
-              progress: 0,
-              exePath: exePath || ''
-            }
-          : game
-      )
-    )
-    setIsInstallOpen(false)
   }
 
   const completeUninstallation = async (gameId) => {
@@ -89,7 +94,8 @@ export function GameLibrary({ gameData, setGameData, isLoading, error, handleRet
                 ...g,
                 installed: false,
                 installPath: '',
-                progress: 0
+                progress: 0,
+                download: ''
               }
             : g
         )
@@ -118,8 +124,8 @@ export function GameLibrary({ gameData, setGameData, isLoading, error, handleRet
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
+      <div className="h-full flex pt-90 items-center justify-center">
+        <div className=" h-full text-center">
           <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
           <p className="text-muted-foreground">Cargando juegos...</p>
         </div>
@@ -248,13 +254,12 @@ export function GameLibrary({ gameData, setGameData, isLoading, error, handleRet
             }}
           />
           <InstallDialog
-            game={selectedGame}
+            gameId={selectedGame.id}
+            gameData={gameData}
             open={isInstallOpen}
             onOpenChange={setIsInstallOpen}
-            onComplete={completeInstallation}
-            onError={(error) => {
-              setIsInstallOpen(false)
-            }}
+            isDownloadsSidebarOpen={isDownloadsSidebarOpen}
+            setIsDownloadsSidebarOpen={setIsDownloadsSidebarOpen}
           />
           <UninstallDialog
             game={selectedGame}

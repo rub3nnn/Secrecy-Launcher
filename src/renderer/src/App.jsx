@@ -1,33 +1,211 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { GameLibrary } from '@/components/game-library'
 import { SidebarNav } from '@/components/sidebar-nav'
 import { UpdateNotification } from '@/components/update'
+import { AppErrorDialog } from '@/components/app-error-dialog'
+
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 function App() {
   const [gameData, setGameData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [showErrorDialog, setShowErrorDialog] = useState(false)
+  const [isDownloadsSidebarOpen, setIsDownloadsSidebarOpen] = useState(false)
+  const [currentError, setCurrentError] = useState({
+    title: '',
+    description: '',
+    severity: '',
+    errorCode: '',
+    errorDetails: ''
+  })
 
-  // Función para cargar los datos persistentes de los juegos
-  const loadPersistedGameData = async () => {
+  // Memoized handler for errors
+  const handleErrors = useCallback((error) => {
+    console.error('Error:', error)
+    setCurrentError({
+      title: error.title || 'Ha ocurrido un error',
+      description: error.description || 'No se pudo procesar la solicitud.',
+      severity: error.severity || 'error',
+      errorCode: error.errorCode,
+      errorDetails: error.errorDetails
+    })
+    setShowErrorDialog(true)
+  }, [])
+
+  // Throttled progress updates
+  const throttledProgressUpdate = useCallback((data) => {
+    setGameData((prev) => {
+      const newData = [...prev]
+      const gameIndex = newData.findIndex((g) => g.id === data.id)
+      if (gameIndex !== -1) {
+        newData[gameIndex] = {
+          ...newData[gameIndex],
+          download: {
+            ...newData[gameIndex].download,
+            status: 'downloading',
+            progress: data.progress,
+            speed: data.speed,
+            downloaded: data.downloaded,
+            total: data.total,
+            message: data.message
+          }
+        }
+      }
+      return newData
+    })
+  }, [])
+
+  useEffect(() => {
+    const downloadProgressHandler = (event, data) => {
+      throttledProgressUpdate(data)
+    }
+
+    const downloadErrorHandler = (event, data) => {
+      setGameData((prev) => {
+        const newData = [...prev]
+        const gameIndex = newData.findIndex((g) => g.id === data.id)
+        if (gameIndex !== -1) {
+          newData[gameIndex] = {
+            ...newData[gameIndex],
+            download: ''
+          }
+        }
+        return newData
+      })
+      handleErrors({
+        title: 'Error de descarga',
+        description: data.description,
+        errorCode: data.errorCode,
+        errorDetails: data.error
+      })
+    }
+
+    const installingProgressHandler = (event, data) => {
+      setGameData((prev) => {
+        const newData = [...prev]
+        const gameIndex = newData.findIndex((g) => g.id === data.id)
+        if (gameIndex !== -1) {
+          newData[gameIndex] = {
+            ...newData[gameIndex],
+            download: {
+              ...newData[gameIndex].download,
+              status: 'installing',
+              progress: data.progress,
+              message: data.message
+            }
+          }
+        }
+        return newData
+      })
+    }
+
+    const installationCompleteHandler = (event, data) => {
+      setGameData((prev) => {
+        const newData = [...prev]
+        const gameIndex = newData.findIndex((g) => g.id === data.id)
+        if (gameIndex !== -1) {
+          newData[gameIndex] = {
+            ...newData[gameIndex],
+            download: {
+              status: 'completed'
+            },
+            installed: true,
+            installPath: data.installPath,
+            exePath: data.exePath,
+            lastPlayed: newData[gameIndex].lastPlayed || 0
+          }
+        }
+        return newData
+      })
+    }
+
+    const launchEndHandler = (event, data) => {
+      setGameData((prev) => {
+        const newData = [...prev]
+        const gameIndex = newData.findIndex((g) => g.id === data.id)
+        if (gameIndex !== -1) {
+          newData[gameIndex] = {
+            ...newData[gameIndex],
+            lastPlayed: Date.now()
+          }
+        }
+        return newData
+      })
+
+      if (data.error) {
+        if (!data.requireSteam) {
+          handleErrors(data.error)
+        }
+      }
+    }
+
+    const handleStatusDownload = (event, data) => {
+      console.log(data)
+      if (data.status === 'canceled') {
+        setGameData((prev) => {
+          const newData = [...prev]
+          const gameIndex = newData.findIndex((g) => g.id === data.id)
+          if (gameIndex !== -1) {
+            newData[gameIndex] = {
+              ...newData[gameIndex],
+              download: ''
+            }
+          }
+          return newData
+        })
+      } else {
+        setGameData((prev) => {
+          const newData = [...prev]
+          const gameIndex = newData.findIndex((g) => g.id === data.id)
+          if (gameIndex !== -1) {
+            newData[gameIndex] = {
+              ...newData[gameIndex],
+              download: {
+                ...newData[gameIndex].download,
+                status: data.status,
+                message: data.message
+              }
+            }
+          }
+          return newData
+        })
+      }
+    }
+
+    const ipc = window.electron.ipcRenderer
+    ipc.on('download-progress', downloadProgressHandler)
+    ipc.on('download-status', handleStatusDownload)
+    ipc.on('download-error', downloadErrorHandler)
+    ipc.on('installing-progress', installingProgressHandler)
+    ipc.on('installation-complete', installationCompleteHandler)
+    ipc.on('launch-end', launchEndHandler)
+
+    return () => {
+      ipc.removeListener('download-progress', downloadProgressHandler)
+      ipc.removeListener('download-status', handleStatusDownload)
+      ipc.removeListener('download-error', downloadErrorHandler)
+      ipc.removeListener('installing-progress', installingProgressHandler)
+      ipc.removeListener('installation-complete', installationCompleteHandler)
+      ipc.removeListener('launch-end', launchEndHandler)
+    }
+  }, [throttledProgressUpdate, handleErrors])
+
+  // Memoized function to load game data
+  const loadPersistedGameData = useCallback(async () => {
     try {
-      // Cargar los datos base del juego desde la API
-      const baseGameData = await window.electron.ipcRenderer.invoke('fetchGameData')
-
-      // Cargar los estados persistentes (solo los que han cambiado)
+      const baseGameData = (await window.electron.ipcRenderer.invoke('fetchGameData')) || []
       const persistedData =
         (await window.electron.ipcRenderer.invoke('storageGet', 'gamesState')) || {}
 
-      // Combinar los datos base con los persistentes (solo para juegos modificados)
       const mergedGameData = baseGameData.map((game) => {
-        // Si existe data persistente para este juego, la usamos
         if (persistedData[game.id]) {
           return {
             ...game,
-            ...persistedData[game.id] // Solo sobrescribe las propiedades que han cambiado
+            ...persistedData[game.id]
           }
         }
-        return game // Si no hay cambios, devuelve el juego original
+        return game
       })
 
       setGameData(mergedGameData)
@@ -35,12 +213,12 @@ function App() {
     } catch (error) {
       console.error('Error loading game data:', error)
       setError('No se pudieron cargar los juegos. Por favor, intenta más tarde.')
-      setIsLoading(true)
+      setIsLoading(false)
     }
-  }
+  }, [])
 
-  // Función para guardar solo los estados modificados de los juegos
-  const saveGamesState = async (games) => {
+  // Memoized function to save game state
+  const saveGamesState = useCallback(async (games) => {
     try {
       const gamesState = games.reduce((acc, game) => {
         acc[game.id] = {
@@ -58,36 +236,67 @@ function App() {
     } catch (error) {
       console.error('Error saving games state:', error)
     }
-  }
-
-  useEffect(() => {
-    loadPersistedGameData()
   }, [])
 
-  // Actualizar el estado guardado cada vez que gameData cambie
+  // Initial load
+  useEffect(() => {
+    loadPersistedGameData()
+  }, [loadPersistedGameData])
+
+  // Auto-save when gameData changes
   useEffect(() => {
     if (!isLoading && gameData.length > 0) {
       saveGamesState(gameData)
     }
-  }, [gameData, isLoading])
+  }, [gameData, isLoading, saveGamesState])
+
+  // Memoized game data to prevent unnecessary re-renders
+  const memoizedGameData = useMemo(() => gameData, [gameData])
+
+  // Memoized refresh function
+  const handleRefresh = useCallback(() => {
+    setIsLoading(true)
+    setError(null)
+    loadPersistedGameData()
+  }, [loadPersistedGameData])
+
+  const downloads = gameData.filter((game) => game.download)
 
   return (
     <div className="flex h-screen bg-background">
-      <SidebarNav gameData={gameData} isLoading={isLoading} />
+      <SidebarNav
+        gameData={memoizedGameData}
+        isLoading={isLoading}
+        handleRefresh={handleRefresh}
+        error={error}
+        downloads={downloads}
+        isDownloadsSidebarOpen={isDownloadsSidebarOpen}
+        setIsDownloadsSidebarOpen={setIsDownloadsSidebarOpen}
+      />
       <main className="flex-1 overflow-auto">
-        <GameLibrary
-          gameData={gameData}
-          setGameData={setGameData}
-          isLoading={isLoading}
-          error={error}
-          handleRetry={() => {
-            setIsLoading(true)
-            setError(null)
-            loadPersistedGameData()
-          }}
-        />
+        <ScrollArea className="h-full">
+          <GameLibrary
+            gameData={memoizedGameData}
+            setGameData={setGameData}
+            isLoading={isLoading}
+            error={error}
+            handleRetry={handleRefresh}
+            handleErrors={handleErrors}
+            isDownloadsSidebarOpen={isDownloadsSidebarOpen}
+            setIsDownloadsSidebarOpen={setIsDownloadsSidebarOpen}
+          />
+        </ScrollArea>
       </main>
       <UpdateNotification />
+      <AppErrorDialog
+        open={showErrorDialog}
+        onOpenChange={setShowErrorDialog}
+        title={currentError.title}
+        description={currentError.description}
+        severity={currentError.severity}
+        errorCode={currentError.errorCode}
+        errorDetails={currentError.errorDetails}
+      />
     </div>
   )
 }

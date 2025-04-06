@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react'
 import { Download, X, Check, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { motion, AnimatePresence } from 'framer-motion'
+import { VersionUpdateAnimation } from '@/components/update-animation'
 
 export function UpdateNotification() {
   const [updateInfo, setUpdateInfo] = useState({
@@ -51,9 +51,6 @@ export function UpdateNotification() {
       if (updated === false) {
         setShowSuccess(true)
         window.electron.ipcRenderer.invoke('storageSet', 'updated', true)
-        setTimeout(() => {
-          setShowSuccess(false)
-        }, 3000)
       }
     }
 
@@ -84,6 +81,7 @@ export function UpdateNotification() {
   return (
     <>
       {/* Notificación de actualización disponible */}
+      {showSuccess && <VersionUpdateAnimation />}
       <AnimatePresence>
         {false && (
           <motion.div
@@ -171,10 +169,8 @@ export function UpdateNotification() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Notificación de actualización exitosa */}
+      {/* 
       <AnimatePresence>
-        {showSuccess && (
           <motion.div
             className="fixed bottom-4 right-4 z-50 max-w-md"
             initial={{ opacity: 0, y: 50 }}
@@ -202,8 +198,8 @@ export function UpdateNotification() {
               </div>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+          </AnimatePresence>
+         */}
     </>
   )
 }

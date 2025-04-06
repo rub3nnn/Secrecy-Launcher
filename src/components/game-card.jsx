@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Download, MoreHorizontal, Play, Star } from 'lucide-react'
+import { Download, MoreHorizontal, Play, RefreshCcw, Star } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -177,6 +177,38 @@ export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggle
                     <Play className="mr-2 h-4 w-4" />
                     Jugar
                   </Button>
+                ) : game.download ? (
+                  game.download.status === 'downloading' ||
+                  game.download.status === 'installing' ? (
+                    <Button
+                      size="lg"
+                      variant="default"
+                      className="flex-1 relative overflow-hidden"
+                      disabled={game.download.status === 'installing'}
+                    >
+                      <span className="relative z-10 flex items-center">
+                        <span className="animate-pulse mr-2">
+                          {game.download.status === 'installing' ? (
+                            <RefreshCcw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                        </span>
+                        <span>
+                          {game.download.status === 'installing'
+                            ? 'Instalando...'
+                            : game.download.progress + '%'}
+                        </span>
+                      </span>
+                      <span
+                        className="absolute inset-0 bg-white/20"
+                        style={{
+                          width: `${game.download.progress}%`,
+                          transition: 'width 0.3s ease'
+                        }}
+                      />
+                    </Button>
+                  ) : null
                 ) : (
                   <Button size="lg" variant="default" className="flex-1" onClick={onInstall}>
                     <Download className="mr-2 h-4 w-4" />
