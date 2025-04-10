@@ -141,7 +141,6 @@ function App() {
     }
 
     const handleStatusDownload = (event, data) => {
-      console.log(data)
       if (data.status === 'canceled') {
         setGameData((prev) => {
           const newData = [...prev]

@@ -17,6 +17,10 @@ export function InstallDialog({
   const [waitingForDownload, setWaitingForDownload] = useState(false)
 
   useEffect(() => {
+    setWaitingForDownload(false)
+  }, [])
+
+  useEffect(() => {
     if (game.download && game.download.status === 'downloading' && waitingForDownload) {
       setIsDownloadsSidebarOpen(true)
       onOpenChange(false)

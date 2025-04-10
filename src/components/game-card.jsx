@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Download, MoreHorizontal, Play, RefreshCcw, Star } from 'lucide-react'
+import { Download, MoreHorizontal, Play, RefreshCcw, Star, Pause } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Progress } from '@/components/ui/progress'
 
-export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggleFavorite }) {
+export function GameCard({
+  game,
+  onViewDetails,
+  onInstall,
+  onUninstall,
+  onToggleFavorite,
+  setIsDownloadsSidebarOpen
+}) {
   const [videoLoaded, setVideoLoaded] = useState(false)
   const [videoError, setVideoError] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
@@ -178,21 +185,25 @@ export function GameCard({ game, onViewDetails, onInstall, onUninstall, onToggle
                     Jugar
                   </Button>
                 ) : game.download ? (
-                  game.download.status === 'downloading' ||
-                  game.download.status === 'installing' ? (
+                  game.download.status != 'completed' ? (
                     <Button
                       size="lg"
                       variant="default"
                       className="flex-1 relative overflow-hidden"
                       disabled={game.download.status === 'installing'}
+                      onClick={() => {
+                        setIsDownloadsSidebarOpen(true)
+                      }}
                     >
                       <span className="relative z-10 flex items-center">
                         <span className="animate-pulse mr-2">
-                          {game.download.status === 'installing' ? (
+                          {game.download.status === 'installing' && (
                             <RefreshCcw className="h-4 w-4 animate-spin" />
-                          ) : (
+                          )}
+                          {game.download.status === 'downloading' && (
                             <Download className="h-4 w-4" />
                           )}
+                          {game.download.status === 'paused' && <Pause className="h-4 w-4" />}
                         </span>
                         <span>
                           {game.download.status === 'installing'

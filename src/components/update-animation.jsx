@@ -223,7 +223,7 @@ export function VersionUpdateAnimation() {
                 Disfruta de todas las nuevas funciones y mejoras que hemos preparado para ti.
               </p>
               <div className="flex items-center justify-center ">
-                <span className="text-purple-200">Iniciando Secrecy Launcher 2.0.0</span>
+                <span className="text-purple-200">Iniciando Secrecy Launcher 2.0.1</span>
                 <ArrowRight className="ml-2 h-4 w-4 animate-pulse text-purple-300" />
               </div>
             </motion.div>

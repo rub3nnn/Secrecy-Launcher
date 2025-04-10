@@ -69,7 +69,9 @@ function setupAutoUpdater(): void {
     return
   }
 
-  autoUpdater.forceDevUpdateConfig = true
+  if (is.dev) {
+    autoUpdater.forceDevUpdateConfig = true
+  }
 
   autoUpdater.autoDownload = true
 
@@ -173,7 +175,7 @@ function updateProgressBar(progress: number): void {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.electron')
+  electronApp.setAppUserModelId('Secrecy Launcher')
 
   // Configurar el auto-updater
   setupAutoUpdater()
@@ -221,7 +223,7 @@ app.whenReady().then(() => {
       ensureDirectory(downloadPath)
       ensureDirectory(extractPath)
 
-      // Función para manejar la descarga de una URL
+      // Función para manejar la descarga de una URL (se mantiene igual)
       const downloadFile = async (url: string, index?: number, total?: number): Promise<string> => {
         const message =
           total !== undefined
@@ -230,7 +232,8 @@ app.whenReady().then(() => {
 
         const dl = new DownloaderHelper(url, downloadPath, {
           retry: { maxRetries: 3, delay: 3000 },
-          override: true
+          override: true,
+          resumeIfFileExists: true
         })
 
         activeDownloads.set(gameData.id, dl)
@@ -243,7 +246,6 @@ app.whenReady().then(() => {
 
         dl.on('progress', (stats) => {
           const progress = Math.floor(stats.progress)
-          log.info(`Download progress: ${progress}%`)
           event.sender.send('download-progress', {
             id: gameData.id,
             progress: progress,
@@ -276,7 +278,7 @@ app.whenReady().then(() => {
       try {
         let filePaths: string[] = []
 
-        // Manejar múltiples URLs o una sola
+        // Manejar múltiples URLs o una sola (COMPORTAMIENTO ORIGINAL)
         if (Array.isArray(gameData.url)) {
           const totalParts = gameData.url.length
           for (let i = 0; i < totalParts; i++) {
@@ -299,124 +301,148 @@ app.whenReady().then(() => {
           })
         }
 
-        try {
-          event.sender.send('installing-progress', {
-            id: gameData.id,
-            stage: 'extracting',
-            progress: 0,
-            message: 'Preparando para instalar archivos...'
-          })
+        // MODIFICACIÓN: Solo cambios en la parte de extracción para ignorar errores
+        let extractionErrors = 0
+        event.sender.send('installing-progress', {
+          id: gameData.id,
+          stage: 'extracting',
+          progress: 0,
+          message: 'Preparando para instalar archivos...'
+        })
 
-          updateProgressBar(-1)
+        updateProgressBar(-1)
 
-          let totalFiles = 0
-          let extractedFiles = 0
+        let totalFiles = 0
+        let extractedFiles = 0
 
-          // Procesar cada archivo descargado
-          for (const filePath of filePaths) {
+        // Procesar cada archivo descargado
+        for (const filePath of filePaths) {
+          try {
             if (filePath.endsWith('.rar')) {
-              // Handle RAR extraction
-              const extractorOptions: any = {
-                filepath: filePath,
-                targetPath: extractPath
-              }
+              try {
+                const extractorOptions: any = {
+                  filepath: filePath,
+                  targetPath: extractPath
+                }
 
-              // Añadir contraseña si existe
-              if (gameData.extractPassword) {
-                extractorOptions.password = gameData.extractPassword
-              }
+                if (gameData.extractPassword) {
+                  extractorOptions.password = gameData.extractPassword
+                }
 
-              const extractor = await createExtractorFromFile(extractorOptions)
+                const extractor = await createExtractorFromFile(extractorOptions)
+                const list = extractor.getFileList()
+                const fileHeaders = [...list.fileHeaders]
+                totalFiles += fileHeaders.length
 
-              const list = extractor.getFileList()
-              const fileHeaders = [...list.fileHeaders]
-              totalFiles += fileHeaders.length
+                if (fileHeaders.length === 0) {
+                  log.warn(`El archivo RAR ${filePath} está vacío`)
+                  continue
+                }
 
-              if (fileHeaders.length === 0) {
-                throw new Error('El archivo RAR está vacío')
-              }
+                const extracted = extractor.extract()
 
-              const extracted = extractor.extract()
+                for (const { fileHeader } of extracted.files) {
+                  try {
+                    extractedFiles++
+                    const progress = Math.min(99, Math.floor((extractedFiles / totalFiles) * 100))
 
-              for (const { fileHeader } of extracted.files) {
-                extractedFiles++
-                const progress = Math.min(99, Math.floor((extractedFiles / totalFiles) * 100))
+                    event.sender.send('installing-progress', {
+                      id: gameData.id,
+                      stage: 'extracting',
+                      progress: progress,
+                      message: `Procesando: ${fileHeader.name} (${extractedFiles}/${totalFiles})`
+                    })
 
-                event.sender.send('installing-progress', {
-                  id: gameData.id,
-                  stage: 'extracting',
-                  progress: progress,
-                  message: `Procesando: ${fileHeader.name} (${extractedFiles}/${totalFiles})`
-                })
-
-                updateProgressBar(progress / 100)
+                    updateProgressBar(progress / 100)
+                  } catch (err) {
+                    extractionErrors++
+                    log.error(`Error al procesar archivo ${fileHeader.name}:`, err)
+                  }
+                }
+              } catch (err) {
+                extractionErrors++
+                log.error(`Error al extraer archivo RAR ${filePath}:`, err)
               }
             } else if (filePath.endsWith('.zip')) {
-              // Handle ZIP extraction
-              const zip = new AdmZip(filePath)
-              const zipEntries = zip.getEntries()
-              totalFiles += zipEntries.length
+              try {
+                const zip = new AdmZip(filePath)
+                const zipEntries = zip.getEntries()
+                totalFiles += zipEntries.length
 
-              if (zipEntries.length === 0) {
-                throw new Error('El archivo ZIP está vacío')
-              }
+                if (zipEntries.length === 0) {
+                  log.warn(`El archivo ZIP ${filePath} está vacío`)
+                  continue
+                }
 
-              // Añadir contraseña si existe
-              if (gameData.extractPassword) {
-                zip.setPassword(gameData.extractPassword)
-              }
+                if (gameData.extractPassword) {
+                  zip.setPassword(gameData.extractPassword)
+                }
 
-              zipEntries.forEach((entry) => {
-                extractedFiles++
-                const progress = Math.min(99, Math.floor((extractedFiles / totalFiles) * 100))
+                zipEntries.forEach((entry) => {
+                  try {
+                    extractedFiles++
+                    const progress = Math.min(99, Math.floor((extractedFiles / totalFiles) * 100))
 
-                event.sender.send('installing-progress', {
-                  id: gameData.id,
-                  stage: 'extracting',
-                  progress: progress,
-                  message: `Procesando: ${entry.entryName} (${extractedFiles}/${totalFiles})`
+                    event.sender.send('installing-progress', {
+                      id: gameData.id,
+                      stage: 'extracting',
+                      progress: progress,
+                      message: `Procesando: ${entry.entryName} (${extractedFiles}/${totalFiles})`
+                    })
+
+                    updateProgressBar(progress / 100)
+                  } catch (err) {
+                    extractionErrors++
+                    log.error(`Error al procesar entrada ZIP ${entry.entryName}:`, err)
+                  }
                 })
 
-                updateProgressBar(progress / 100)
-              })
-
-              zip.extractAllTo(extractPath, true)
+                zip.extractAllTo(extractPath, true)
+              } catch (err) {
+                extractionErrors++
+                log.error(`Error al extraer archivo ZIP ${filePath}:`, err)
+              }
             } else {
-              throw new Error('Formato de archivo no soportado para extracción')
+              log.warn(`Formato de archivo no soportado: ${filePath}`)
             }
+          } catch (err) {
+            extractionErrors++
+            log.error(`Error general al procesar archivo ${filePath}:`, err)
           }
+        }
 
-          log.info('Extraction complete')
+        log.info(`Extracción completada con ${extractionErrors} errores`)
 
-          updateProgressBar(1)
+        updateProgressBar(1)
 
-          // Eliminar archivos comprimidos después de la extracción
-          for (const filePath of filePaths) {
-            try {
-              fs.unlinkSync(filePath)
-              log.info(`Archivo eliminado: ${filePath}`)
-            } catch (err) {
-              log.error(`Error al eliminar el archivo ${filePath}:`, err)
-            }
+        // Eliminar archivos comprimidos después de la extracción
+        for (const filePath of filePaths) {
+          try {
+            fs.unlinkSync(filePath)
+            log.info(`Archivo eliminado: ${filePath}`)
+          } catch (err) {
+            log.error(`Error al eliminar el archivo ${filePath}:`, err)
           }
+        }
 
-          event.sender.send('installation-complete', {
-            id: gameData.id,
-            installPath: downloadPath,
-            exePath: gameData.executable ? path.join(extractPath, gameData.executable) : extractPath
-          })
+        // Notificar al usuario si hubo errores
+        if (extractionErrors > 0) {
+          showNotificationIfBackground(
+            'Instalación completada con advertencias',
+            `El juego ${gameData.title} se instaló, pero hubo ${extractionErrors} errores durante la extracción.`
+          )
+        } else {
           showNotificationIfBackground(
             'Instalación completada',
             `El juego ${gameData.title} se ha instalado correctamente.`
           )
-        } catch (error: any) {
-          log.error('Extraction error:', error)
-          updateProgressBar(-1)
-          event.sender.send('installation-error', {
-            id: gameData.id,
-            error: error.message || 'Error al extraer el archivo'
-          })
         }
+
+        event.sender.send('installation-complete', {
+          id: gameData.id,
+          installPath: downloadPath,
+          exePath: gameData.executable ? path.join(extractPath, gameData.executable) : extractPath
+        })
       } catch (error: any) {
         log.error('Download error:', error)
         updateProgressBar(-1)
@@ -469,7 +495,11 @@ app.whenReady().then(() => {
   ipcMain.on('resumeDownload', async (event, gameId: number) => {
     const paused = pausedDownloads.get(gameId)
     if (!paused) return
-
+    event.sender.send('download-status', {
+      id: gameId,
+      status: 'resuming',
+      message: 'Reanudando descarga...'
+    })
     const { downloader } = paused
     activeDownloads.set(gameId, downloader)
     pausedDownloads.delete(gameId)
@@ -479,6 +509,10 @@ app.whenReady().then(() => {
       log.info(`Download resumed successfully for game ID: ${gameId}`)
     } catch (error) {
       log.error(`Resume failed for game ID: ${gameId}:`, error)
+      event.sender.send('download-status', {
+        id: gameId,
+        status: 'paused'
+      })
       event.sender.send('download-error', {
         id: gameId,
         error: 'RESUME_FAILED',
@@ -779,8 +813,6 @@ app.whenReady().then(() => {
 
     dl.on('progress', (stats) => {
       const progress = Math.floor(stats.progress)
-      log.info(`Steam download progress: ${progress}%`)
-
       event.sender.send('steam-download-progress', {
         progress,
         speed: stats.speed,

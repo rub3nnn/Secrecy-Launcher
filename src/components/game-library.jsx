@@ -175,6 +175,7 @@ export function GameLibrary({
                     onInstall={() => handleInstall(game.id)}
                     onUninstall={() => handleUninstall(game.id)}
                     onToggleFavorite={() => toggleFavorite(game.id)}
+                    setIsDownloadsSidebarOpen={setIsDownloadsSidebarOpen}
                   />
                 ))}
               </div>

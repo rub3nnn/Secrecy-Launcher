@@ -9,9 +9,6 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import video from '@renderer/assets/video.webm' // Adjust the path as necessary
-import banner from '@renderer/assets/banner.jpg'
-
 export function GameDetailsDialog({ game, open, onOpenChange, onToggleFavorite, onInstall }) {
   const [videoLoaded, setVideoLoaded] = useState(false)
   const [videoError, setVideoError] = useState(false)
@@ -38,6 +35,23 @@ export function GameDetailsDialog({ game, open, onOpenChange, onToggleFavorite, 
       }
     }
   }, [open, game.backgroundVideo, videoLoaded])
+
+  const haceCuanto = (fecha = 0) => {
+    if (fecha === 0 || typeof fecha != 'number') return 'Nunca'
+    const dif = Math.floor((Date.now() - fecha) / 1000)
+    if (dif < 60) return 'Ahora'
+
+    const m = [
+      { v: 31536000, t: 'año' },
+      { v: 2592000, t: 'mes', p: 'meses' },
+      { v: 86400, t: 'día' },
+      { v: 3600, t: 'hora' },
+      { v: 60, t: 'minuto' }
+    ].find((i) => dif >= i.v)
+
+    const n = Math.floor(dif / m.v)
+    return `hace ${n} ${n === 1 ? m.t : m.p || m.t + 's'}`
+  }
 
   // Reset video state when dialog closes
   useEffect(() => {
@@ -103,7 +117,7 @@ export function GameDetailsDialog({ game, open, onOpenChange, onToggleFavorite, 
             <div>
               <p className="text-sm text-muted-foreground">
                 {game.installed
-                  ? `Instalado • ${game.size} • Último juego ${game.lastPlayed}`
+                  ? `Instalado • ${game.size} • Último juego ${haceCuanto(game.lastPlayed)}`
                   : `Tamaño: ${game.size}`}
               </p>
               {game.progress < 100 && game.progress > 0 && (
@@ -117,6 +131,7 @@ export function GameDetailsDialog({ game, open, onOpenChange, onToggleFavorite, 
               )}
             </div>
             {game.url &&
+              !(game.download && game.download.status !== 'completed') &&
               (game.installed ? (
                 <Button
                   size="lg"

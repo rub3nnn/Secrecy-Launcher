@@ -86,11 +86,11 @@ export function DownloadsSidebar({ games, isOpen, onClose }) {
                               }
                               className={`text-xs px-1 py-0 h-4 ${game.download.status === 'completed' && 'bg-green-100'}`}
                             >
-                              {game.download.status === 'completed'
-                                ? 'Completado'
-                                : game.download.status === 'paused'
-                                  ? 'Pausado'
-                                  : 'Descargando'}
+                              {game.download.status === 'completed' && 'Completado'}
+                              {game.download.status === 'paused' && 'Pausado'}
+                              {game.download.status === 'downloading' && 'Descargando'}
+                              {game.download.status === 'installing' && 'Instalando'}
+                              {game.download.status === 'resuming' && 'Reanudando'}
                             </Badge>
                           </div>
                         </div>
@@ -101,7 +101,10 @@ export function DownloadsSidebar({ games, isOpen, onClose }) {
                               size="icon"
                               className="h-8 w-8"
                               onClick={() => togglePause(game.id)}
-                              disabled={game.download.status === 'installing'}
+                              disabled={
+                                game.download.status === 'installing' ||
+                                game.download.status === 'resuming'
+                              }
                             >
                               {game.download.status === 'paused' ? (
                                 <Play className="h-4 w-4" />
@@ -114,7 +117,10 @@ export function DownloadsSidebar({ games, isOpen, onClose }) {
                               size="icon"
                               className="h-8 w-8 text-destructive hover:text-destructive"
                               onClick={() => cancelDownload(game.id)}
-                              disabled={game.download.status === 'paused'}
+                              disabled={
+                                game.download.status === 'paused' ||
+                                game.download.status === 'resuming'
+                              }
                             >
                               <X className="h-4 w-4" />
                             </Button>
