@@ -1,4 +1,4 @@
-appId: com.electron.app
+appId: com.secrecy.launcher
 productName: secrecy-launcher
 directories:
   buildResources: build

@@ -3,7 +3,7 @@ import { GameLibrary } from '@/components/game-library'
 import { SidebarNav } from '@/components/sidebar-nav'
 import { UpdateNotification } from '@/components/update'
 import { AppErrorDialog } from '@/components/app-error-dialog'
-
+import { MinecraftLauncher } from '@/components/minecraft-launcher'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
 function App() {
@@ -12,6 +12,8 @@ function App() {
   const [error, setError] = useState(null)
   const [showErrorDialog, setShowErrorDialog] = useState(false)
   const [isDownloadsSidebarOpen, setIsDownloadsSidebarOpen] = useState(false)
+  const [currentSection, setCurrentSection] = useState('library')
+  const [minecraftStatus, setMinecraftStatus] = useState({})
   const [currentError, setCurrentError] = useState({
     title: '',
     description: '',
@@ -172,12 +174,22 @@ function App() {
       }
     }
 
+    const handleError = (event, data) => {
+      handleErrors(data)
+    }
+
+    const handleMinecraftStatus = (event, data) => {
+      setMinecraftStatus(data)
+    }
+
     const ipc = window.electron.ipcRenderer
     ipc.on('download-progress', downloadProgressHandler)
     ipc.on('download-status', handleStatusDownload)
     ipc.on('download-error', downloadErrorHandler)
     ipc.on('installing-progress', installingProgressHandler)
     ipc.on('installation-complete', installationCompleteHandler)
+    ipc.on('minecraft-status', handleMinecraftStatus)
+    ipc.on('error', handleError)
     ipc.on('launch-end', launchEndHandler)
 
     return () => {
@@ -185,7 +197,9 @@ function App() {
       ipc.removeListener('download-status', handleStatusDownload)
       ipc.removeListener('download-error', downloadErrorHandler)
       ipc.removeListener('installing-progress', installingProgressHandler)
+      ipc.removeListener('minecraft-status', handleMinecraftStatus)
       ipc.removeListener('installation-complete', installationCompleteHandler)
+      ipc.removeListener('error', handleError)
       ipc.removeListener('launch-end', launchEndHandler)
     }
   }, [throttledProgressUpdate, handleErrors])
@@ -271,19 +285,26 @@ function App() {
         downloads={downloads}
         isDownloadsSidebarOpen={isDownloadsSidebarOpen}
         setIsDownloadsSidebarOpen={setIsDownloadsSidebarOpen}
+        currentSection={currentSection}
+        setCurrentSection={setCurrentSection}
       />
       <main className="flex-1 overflow-auto">
         <ScrollArea className="h-full">
-          <GameLibrary
-            gameData={memoizedGameData}
-            setGameData={setGameData}
-            isLoading={isLoading}
-            error={error}
-            handleRetry={handleRefresh}
-            handleErrors={handleErrors}
-            isDownloadsSidebarOpen={isDownloadsSidebarOpen}
-            setIsDownloadsSidebarOpen={setIsDownloadsSidebarOpen}
-          />
+          {currentSection === 'library' && (
+            <GameLibrary
+              gameData={memoizedGameData}
+              setGameData={setGameData}
+              isLoading={isLoading}
+              error={error}
+              handleRetry={handleRefresh}
+              handleErrors={handleErrors}
+              isDownloadsSidebarOpen={isDownloadsSidebarOpen}
+              setIsDownloadsSidebarOpen={setIsDownloadsSidebarOpen}
+            />
+          )}
+          {currentSection === 'minecraft' && (
+            <MinecraftLauncher minecraftStatus={minecraftStatus} />
+          )}
         </ScrollArea>
       </main>
       <UpdateNotification />

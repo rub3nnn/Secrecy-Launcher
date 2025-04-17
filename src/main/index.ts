@@ -3,11 +3,12 @@ import path from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { DownloaderHelper } from 'node-downloader-helper'
 import fs from 'fs'
-import { createExtractorFromFile } from 'node-unrar-js'
 import Store from 'electron-store'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
-import AdmZip from 'adm-zip'
+import { Worker } from 'worker_threads'
+import { Client, Authenticator } from 'minecraft-launcher-core'
+import os from 'os'
 
 // Configuración del logger
 log.transports.file.level = 'info'
@@ -301,8 +302,6 @@ app.whenReady().then(() => {
           })
         }
 
-        // MODIFICACIÓN: Solo cambios en la parte de extracción para ignorar errores
-        let extractionErrors = 0
         event.sender.send('installing-progress', {
           id: gameData.id,
           stage: 'extracting',
@@ -312,136 +311,70 @@ app.whenReady().then(() => {
 
         updateProgressBar(-1)
 
-        let totalFiles = 0
-        let extractedFiles = 0
+        const worker = new Worker(path.join(__dirname, '../../resources/extractWorker.js'), {
+          workerData: {
+            gameData,
+            filePaths,
+            extractPath
+          }
+        })
 
-        // Procesar cada archivo descargado
-        for (const filePath of filePaths) {
-          try {
-            if (filePath.endsWith('.rar')) {
+        worker.on('message', (msg) => {
+          if (msg.type === 'progress') {
+            event.sender.send('installing-progress', {
+              id: gameData.id,
+              stage: 'extracting',
+              progress: msg.progress,
+              message: `Procesando: ${msg.fileName}`
+            })
+
+            updateProgressBar(msg.progress / 100)
+          }
+
+          if (msg.type === 'done') {
+            updateProgressBar(1)
+
+            // Limpiar archivos
+            for (const filePath of filePaths) {
               try {
-                const extractorOptions: any = {
-                  filepath: filePath,
-                  targetPath: extractPath
-                }
-
-                if (gameData.extractPassword) {
-                  extractorOptions.password = gameData.extractPassword
-                }
-
-                const extractor = await createExtractorFromFile(extractorOptions)
-                const list = extractor.getFileList()
-                const fileHeaders = [...list.fileHeaders]
-                totalFiles += fileHeaders.length
-
-                if (fileHeaders.length === 0) {
-                  log.warn(`El archivo RAR ${filePath} está vacío`)
-                  continue
-                }
-
-                const extracted = extractor.extract()
-
-                for (const { fileHeader } of extracted.files) {
-                  try {
-                    extractedFiles++
-                    const progress = Math.min(99, Math.floor((extractedFiles / totalFiles) * 100))
-
-                    event.sender.send('installing-progress', {
-                      id: gameData.id,
-                      stage: 'extracting',
-                      progress: progress,
-                      message: `Procesando: ${fileHeader.name} (${extractedFiles}/${totalFiles})`
-                    })
-
-                    updateProgressBar(progress / 100)
-                  } catch (err) {
-                    extractionErrors++
-                    log.error(`Error al procesar archivo ${fileHeader.name}:`, err)
-                  }
-                }
+                fs.unlinkSync(filePath)
+                log.info(`Archivo eliminado: ${filePath}`)
               } catch (err) {
-                extractionErrors++
-                log.error(`Error al extraer archivo RAR ${filePath}:`, err)
+                log.error(`Error al eliminar el archivo ${filePath}:`, err)
               }
-            } else if (filePath.endsWith('.zip')) {
-              try {
-                const zip = new AdmZip(filePath)
-                const zipEntries = zip.getEntries()
-                totalFiles += zipEntries.length
-
-                if (zipEntries.length === 0) {
-                  log.warn(`El archivo ZIP ${filePath} está vacío`)
-                  continue
-                }
-
-                if (gameData.extractPassword) {
-                  zip.setPassword(gameData.extractPassword)
-                }
-
-                zipEntries.forEach((entry) => {
-                  try {
-                    extractedFiles++
-                    const progress = Math.min(99, Math.floor((extractedFiles / totalFiles) * 100))
-
-                    event.sender.send('installing-progress', {
-                      id: gameData.id,
-                      stage: 'extracting',
-                      progress: progress,
-                      message: `Procesando: ${entry.entryName} (${extractedFiles}/${totalFiles})`
-                    })
-
-                    updateProgressBar(progress / 100)
-                  } catch (err) {
-                    extractionErrors++
-                    log.error(`Error al procesar entrada ZIP ${entry.entryName}:`, err)
-                  }
-                })
-
-                zip.extractAllTo(extractPath, true)
-              } catch (err) {
-                extractionErrors++
-                log.error(`Error al extraer archivo ZIP ${filePath}:`, err)
-              }
-            } else {
-              log.warn(`Formato de archivo no soportado: ${filePath}`)
             }
-          } catch (err) {
-            extractionErrors++
-            log.error(`Error general al procesar archivo ${filePath}:`, err)
+
+            const notifyMessage =
+              msg.extractionErrors > 0
+                ? `El juego ${gameData.title} se instaló, pero hubo ${msg.extractionErrors} errores durante la extracción.`
+                : `El juego ${gameData.title} se ha instalado correctamente.`
+
+            showNotificationIfBackground(
+              msg.extractionErrors > 0
+                ? 'Instalación completada con advertencias'
+                : 'Instalación completada',
+              notifyMessage
+            )
+
+            event.sender.send('installation-complete', {
+              id: gameData.id,
+              installPath: downloadPath,
+              exePath: gameData.executable
+                ? path.join(extractPath, gameData.executable)
+                : extractPath
+            })
           }
-        }
+        })
 
-        log.info(`Extracción completada con ${extractionErrors} errores`)
-
-        updateProgressBar(1)
-
-        // Eliminar archivos comprimidos después de la extracción
-        for (const filePath of filePaths) {
-          try {
-            fs.unlinkSync(filePath)
-            log.info(`Archivo eliminado: ${filePath}`)
-          } catch (err) {
-            log.error(`Error al eliminar el archivo ${filePath}:`, err)
-          }
-        }
-
-        // Notificar al usuario si hubo errores
-        if (extractionErrors > 0) {
-          showNotificationIfBackground(
-            'Instalación completada con advertencias',
-            `El juego ${gameData.title} se instaló, pero hubo ${extractionErrors} errores durante la extracción.`
-          )
-        } else {
-          showNotificationIfBackground(
-            'Instalación completada',
-            `El juego ${gameData.title} se ha instalado correctamente.`
-          )
-        }
-
-        event.sender.send('installation-complete', {
-          id: gameData.id,
-          installPath: downloadPath,
-          exePath: gameData.executable ? path.join(extractPath, gameData.executable) : extractPath
+        worker.on('error', (err) => {
+          log.error('Worker error:', err)
+          updateProgressBar(-1)
+          event.sender.send('download-error', {
+            id: gameData.id,
+            description: `Error al instalar ${gameData.title}`,
+            error: err.message,
+            errorCode: 'EXTRACTION_WORKER_ERROR'
+          })
         })
       } catch (error: any) {
         log.error('Download error:', error)
@@ -863,11 +796,240 @@ app.whenReady().then(() => {
     }
   })
 
+  async function getTemurin8ReleaseInfo(javaVer) {
+    const arch = os.arch()
+    const is64Bit = arch === 'x64' || arch === 'amd64'
+    const architecture = is64Bit ? 'x64' : 'x86-32'
+
+    try {
+      // Primero intentamos con el último release
+      const latestResponse = await fetch(
+        `https://api.github.com/repos/adoptium/temurin${javaVer}-binaries/releases/latest`
+      )
+      if (!latestResponse.ok) throw new Error('Error al obtener el último release')
+
+      const latestRelease = await latestResponse.json()
+      const assetInfo = findCompatibleAsset(latestRelease, architecture, javaVer)
+
+      if (assetInfo) {
+        return [
+          {
+            javaVer,
+            downloadUrl: assetInfo.downloadUrl,
+            directoryName: latestRelease.tag_name
+          }
+        ]
+      }
+
+      // Si no encontramos en el último release, buscamos en los anteriores
+      console.log(
+        'No se encontró binario compatible en el último release, buscando en anteriores...'
+      )
+      const allReleasesResponse = await fetch(
+        `https://api.github.com/repos/adoptium/temurin${javaVer}-binaries/releases`
+      )
+      if (!allReleasesResponse.ok) throw new Error('Error al obtener todos los releases')
+
+      const allReleases = await allReleasesResponse.json()
+
+      for (const release of allReleases) {
+        const assetInfo = findCompatibleAsset(release, architecture, javaVer)
+        if (assetInfo) {
+          return [
+            {
+              javaVer,
+              downloadUrl: assetInfo.downloadUrl,
+              directoryName: release.tag_name
+            }
+          ]
+        }
+      }
+
+      throw new Error('No se encontró ningún release con binario compatible')
+    } catch (error: any) {
+      console.error('Error:', error.message)
+      return getFallbackReleaseInfo(architecture)
+    }
+  }
+
+  function findCompatibleAsset(release, architecture, javaVer) {
+    const compatibleAsset = release.assets.find((asset) => {
+      return (
+        asset.name.includes(`OpenJDK${javaVer}U-jdk`) &&
+        asset.name.includes(`${architecture}_windows`) &&
+        asset.name.includes('hotspot') &&
+        asset.name.endsWith('.zip')
+      )
+    })
+
+    return compatibleAsset ? { downloadUrl: compatibleAsset.browser_download_url } : null
+  }
+
+  function getFallbackReleaseInfo(architecture) {
+    // Datos de fallback conocidos
+    const fallbackReleases = {
+      x64: {
+        version: 'jdk8u302-b08',
+        url: 'https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u302-b08/OpenJDK8U-jdk_x64_windows_hotspot_8u302b08.zip'
+      },
+      'x86-32': {
+        version: 'jdk8u292-b10',
+        url: 'https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u292-b10/OpenJDK8U-jdk_x86-32_windows_hotspot_8u292b10.zip'
+      }
+    }
+
+    const fallback = fallbackReleases[architecture] || fallbackReleases['x64']
+
+    return [
+      {
+        downloadUrl: fallback.url,
+        directoryName: fallback.version
+      }
+    ]
+  }
+
+  async function getJava(javaVer = 17) {
+    if (store.get(`javaExePath.${javaVer}`)) {
+      return store.get(`javaExePath.${javaVer}`)
+    } else {
+      const [releaseInfo] = await getTemurin8ReleaseInfo(javaVer)
+      const extractPath = path.join(app.getPath('userData'), 'java')
+
+      return new Promise((resolve, reject) => {
+        const worker = new Worker(path.join(__dirname, '../../resources/javaWorker.js'), {
+          workerData: {
+            downloadUrl: releaseInfo.downloadUrl,
+            extractPath,
+            directoryName: releaseInfo.directoryName
+          }
+        })
+
+        worker.on('message', (message) => {
+          switch (message.type) {
+            case 'download-progress':
+              //console.log(`Descargando: ${message.progress}%`)
+              mainWindow?.webContents.send('minecraft-status', {
+                stage: 'downloading-java',
+                progress: message.progress
+              })
+              break
+            case 'extract-progress':
+              console.log(`Extrayendo ${message.fileName}/${message.totalFiles}`)
+              mainWindow?.webContents.send('minecraft-status', {
+                stage: 'installing-java'
+              })
+              break
+            case 'done':
+              console.log(message.extractPath, message.directoryName, 'bin', 'java.exe')
+              const newJavaPath = message.javaPath
+              store.set(`javaExePath.${javaVer}`, newJavaPath)
+              console.log(`Java instalado en: ${newJavaPath}`)
+              mainWindow?.webContents.send('minecraft-status', {
+                stage: 'completed-java'
+              })
+              resolve(newJavaPath)
+              break
+            case 'error':
+              console.error(`Error en ${message.stage}: ${message.error}`)
+              reject(new Error(message.error))
+              break
+          }
+        })
+
+        worker.on('error', (err) => reject(err))
+        worker.on('exit', (code) => {
+          if (code !== 0) {
+            reject(new Error(`Worker exited with code: ${code}`))
+          }
+        })
+      })
+    }
+  }
+
+  const launcher = new Client()
+
+  ipcMain.on('launch-minecraft', async () => {
+    const minecraftDir = path.join(app.getPath('userData'), '.minecraft')
+
+    try {
+      // Instalar Java si es necesario
+      const javaPath = (await getJava()) as string
+
+      // Configuración del lanzador
+      let opts = {
+        authorization: Authenticator.getAuth('hola123'),
+        root: minecraftDir,
+        javaPath: javaPath,
+        version: {
+          number: '1.20.4',
+          type: 'release'
+        },
+        memory: {
+          max: '6G',
+          min: '4G'
+        }
+      }
+
+      // Función para iniciar Minecraft
+      function launchMinecraft() {
+        launcher.launch(opts)
+
+        launcher.on('debug', (e) => console.log(e))
+        launcher.on('data', (e) => console.log(e))
+        launcher.on('close', () => {
+          if (mainWindow) mainWindow.show()
+          mainWindow?.webContents.send('minecraft-status', {
+            stage: 'closed'
+          })
+        })
+      }
+
+      // Ocultar ventana principal al iniciar Minecraft
+      if (mainWindow) mainWindow.hide()
+
+      // Notificar que Minecraft se está iniciando
+      if (mainWindow) {
+        mainWindow.webContents.send('minecraft-status', {
+          stage: 'launching',
+          progress: 100
+        })
+      }
+
+      launchMinecraft()
+    } catch (error) {
+      console.error('Error al lanzar Minecraft:', error)
+      if (mainWindow) {
+        mainWindow.show()
+        mainWindow.webContents.send('minecraft-error', {
+          message: 'Error al lanzar Minecraft',
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+  })
+
   ipcMain.handle('fetchGameData', async () => {
     log.info('Fetching game data...')
     try {
       const response = await fetch(
         'https://secrecyfiles.github.io/fileshoster/secrecylauncher/data.json'
+      )
+      if (!response.ok) {
+        throw new Error('No se pudo cargar los datos de los juegos')
+      }
+      const data = await response.json()
+      return data
+    } catch (err) {
+      console.error('Error al cargar los datos:', err)
+      throw err
+    }
+  })
+
+  ipcMain.handle('fetchMinecraftNews', async () => {
+    log.info('Fetching game data...')
+    try {
+      const response = await fetch(
+        'https://www.minecraft.net/content/minecraftnet/language-masters/es-es/articles/jcr:content/root/container/image_grid_a.articles.page-1.json'
       )
       if (!response.ok) {
         throw new Error('No se pudo cargar los datos de los juegos')

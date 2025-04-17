@@ -1,6 +1,7 @@
 import {
   Download,
   Home,
+  Gamepad,
   Library,
   User,
   Clock,
@@ -23,13 +24,17 @@ export function SidebarNav({
   isLoading,
   handleRefresh,
   error,
-  downloads,
+  downloads = [],
   isDownloadsSidebarOpen,
-  setIsDownloadsSidebarOpen
+  setIsDownloadsSidebarOpen,
+  setCurrentSection,
+  currentSection
 }) {
   const [activeDownloads, setActiveDownloads] = useState(0)
 
-  const recentGames = [...gameData].sort((a, b) => new Date(b.lastPlayed) - new Date(a.lastPlayed))
+  const recentGames = Array.isArray(gameData)
+    ? [...gameData].sort((a, b) => new Date(b.lastPlayed) - new Date(a.lastPlayed))
+    : []
   const steamUser = window.steamAPI.getRecentUser()
 
   const haceCuanto = (fecha = 0) => {
@@ -65,9 +70,21 @@ export function SidebarNav({
         <ScrollArea className="flex-1">
           <div className="p-4">
             <nav className="grid gap-2">
-              <Button variant="outline" className="justify-start gap-2">
+              <Button
+                variant={currentSection === 'library' ? 'default' : 'outline'}
+                className="justify-start gap-2"
+                onClick={() => setCurrentSection('library')}
+              >
                 <Home className="h-4 w-4" />
                 Inicio
+              </Button>
+              <Button
+                variant={currentSection === 'minecraft' ? 'default' : 'outline'}
+                className="justify-start gap-2"
+                onClick={() => setCurrentSection('minecraft')}
+              >
+                <Gamepad className="h-4 w-4" />
+                Minecraft
               </Button>
               <Button
                 variant="ghost"

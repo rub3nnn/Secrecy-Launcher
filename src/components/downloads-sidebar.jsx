@@ -1,6 +1,15 @@
 'use client'
 
-import { Download, Pause, Play, X, Settings, ChevronRight, HardDrive } from 'lucide-react'
+import {
+  Download,
+  Pause,
+  Play,
+  X,
+  Settings,
+  ChevronRight,
+  HardDrive,
+  RefreshCcw
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -140,11 +149,17 @@ export function DownloadsSidebar({ games, isOpen, onClose }) {
 
                           <div className="flex justify-between text-xs text-muted-foreground">
                             <div className="flex items-center">
-                              <Download className="h-3 w-3 mr-1" />
+                              {game.download.status === 'installing' ? (
+                                <RefreshCcw className="h-3 w-3 mr-1 animate-spin" />
+                              ) : (
+                                <Download className="h-3 w-3 mr-1" />
+                              )}
                               <span>
                                 {game.download.status === 'paused'
                                   ? 'Pausado'
-                                  : `${((game.download.speed * 8) / 1_000_000).toFixed(2)} Mbps`}
+                                  : game.download.status === 'installing'
+                                    ? 'Instalando'
+                                    : `${((game.download.speed * 8) / 1_000_000).toFixed(2)} Mb/s`}
                               </span>
                             </div>
                             <div className="flex items-center">
