@@ -9,6 +9,7 @@ import log from 'electron-log'
 import { Worker } from 'worker_threads'
 import { Client, Authenticator } from 'minecraft-launcher-core'
 import os from 'os'
+import { Auth } from 'msmc'
 
 // Configuración del logger
 log.transports.file.level = 'info'
@@ -910,22 +911,27 @@ app.whenReady().then(() => {
               //console.log(`Descargando: ${message.progress}%`)
               mainWindow?.webContents.send('minecraft-status', {
                 stage: 'downloading-java',
-                progress: message.progress
+                progress: message.progress,
+                message: `Descargando Java ${message.progress}%`
               })
               break
             case 'extract-progress':
               console.log(`Extrayendo ${message.fileName}/${message.totalFiles}`)
               mainWindow?.webContents.send('minecraft-status', {
-                stage: 'installing-java'
+                stage: 'installing-java',
+                progress: 100,
+                message: 'Instalando java...'
               })
               break
             case 'done':
-              console.log(message.extractPath, message.directoryName, 'bin', 'java.exe')
+              console.log(message.javaPath)
               const newJavaPath = message.javaPath
               store.set(`javaExePath.${javaVer}`, newJavaPath)
               console.log(`Java instalado en: ${newJavaPath}`)
               mainWindow?.webContents.send('minecraft-status', {
-                stage: 'completed-java'
+                stage: 'completed-java',
+                progress: 0,
+                message: 'Java instalado correctamente'
               })
               resolve(newJavaPath)
               break
@@ -947,51 +953,98 @@ app.whenReady().then(() => {
   }
 
   const launcher = new Client()
+  // Crear un nuevo administrador de autenticación
+  const authManager = new Auth('select_account')
+
+  ipcMain.handle('minecraftLogin', async () => {
+    try {
+      const xboxManager = await authManager.launch('electron')
+      const minecraftData = await xboxManager.getMinecraft()
+      console.log(minecraftData.mclc())
+      store.set('minecraft.auth', minecraftData.mclc())
+      store.set('minecraft.profile', minecraftData.profile)
+      return minecraftData.profile?.name
+    } catch (error) {
+      console.error('Error durante el inicio de sesión:', error)
+      throw error // Importante: re-lanzar para que el renderer lo maneje
+    }
+  })
+
+  // Lanzar la ventana de inicio de sesión usando el framework 'raw' (puede ser 'electron' o 'nwjs')
+
+  const currentPaths = {
+    appData: app.getPath('appData'),
+    userData: app.getPath('userData')
+  }
+
+  store.set('paths.appData', currentPaths.appData)
+  store.set('paths.userData', currentPaths.userData)
 
   ipcMain.on('launch-minecraft', async () => {
-    const minecraftDir = path.join(app.getPath('userData'), '.minecraft')
+    const minecraftDir = store.get('paths.minecraft') as string
 
     try {
-      // Instalar Java si es necesario
-      const javaPath = (await getJava()) as string
+      const javaPath = (await getJava(21)) as string
+      console.log('Java encontrado en:', javaPath)
+      const userAccount = store.get('minecraft.userAccount') as {
+        type: string
+        username: string
+      }
+      const premiumSession = store.get('minecraft.auth') as any // Aquí se guarda el token de msmc
+      const selectedVersion = store.get('minecraft.settings.selectedVersion') as {
+        type: string
+        id: string
+        inheritsFrom?: string
+      }
+      const memoryAllocation = store.get('minecraft.settings.memoryAllocation') as [number, number]
 
-      // Configuración del lanzador
-      let opts = {
-        authorization: Authenticator.getAuth('hola123'),
+      const opts = {
+        authorization:
+          userAccount.type === 'premium'
+            ? premiumSession // este es el token correcto generado por msmc
+            : Authenticator.getAuth(userAccount.username ?? 'Player'),
+
         root: minecraftDir,
         javaPath: javaPath,
-        version: {
-          number: '1.20.4',
-          type: 'release'
-        },
+        version:
+          selectedVersion.type === 'custom'
+            ? {
+                number: selectedVersion.inheritsFrom!,
+                custom: selectedVersion.id,
+                type: 'Secrecy'
+              }
+            : {
+                number: selectedVersion.id,
+                type: selectedVersion.type
+              },
         memory: {
-          max: '6G',
-          min: '4G'
+          min: memoryAllocation[0],
+          max: memoryAllocation[1]
         }
       }
 
-      // Función para iniciar Minecraft
       function launchMinecraft() {
         launcher.launch(opts)
-
-        launcher.on('debug', (e) => console.log(e))
-        launcher.on('data', (e) => console.log(e))
-        launcher.on('close', () => {
-          if (mainWindow) mainWindow.show()
+        launcher.on('debug', (data) => console.log('Minecraft debug:', data))
+        launcher.on('data', (data) => console.log('Minecraft data:', data))
+        launcher.on('progress', (e) => {
           mainWindow?.webContents.send('minecraft-status', {
-            stage: 'closed'
+            stage: 'installing-minecraft',
+            progress: (e.task / e.total) * 100,
+            message:
+              'Descargando archivos de Minecraft... ' + ((e.task / e.total) * 100).toFixed(0) + '%'
           })
         })
-      }
-
-      // Ocultar ventana principal al iniciar Minecraft
-      if (mainWindow) mainWindow.hide()
-
-      // Notificar que Minecraft se está iniciando
-      if (mainWindow) {
-        mainWindow.webContents.send('minecraft-status', {
-          stage: 'launching',
-          progress: 100
+        launcher.on('arguments', () => {
+          mainWindow?.webContents.send('minecraft-status', {
+            stage: 'launching',
+            message: 'Iniciando..'
+          })
+          mainWindow?.hide()
+        })
+        launcher.on('close', () => {
+          mainWindow?.show()
+          mainWindow?.webContents.send('minecraft-status', { stage: 'closed' })
         })
       }
 
@@ -1038,6 +1091,155 @@ app.whenReady().then(() => {
       return data
     } catch (err) {
       console.error('Error al cargar los datos:', err)
+      throw err
+    }
+  })
+
+  // Interfaces para los tipos de datos
+  interface MojangVersion {
+    id: string
+    type: 'release' | 'snapshot' | 'old_beta' | 'old_alpha'
+    url: string
+    time: string
+    releaseTime: string
+    sha1: string
+    complianceLevel: number
+  }
+
+  interface MojangManifest {
+    latest: {
+      release: string
+      snapshot: string
+    }
+    versions: MojangVersion[]
+  }
+
+  interface VersionInfo {
+    id: string
+    type: 'release' | 'snapshot' | 'custom'
+    releaseTime?: string
+    isLatestRelease?: boolean
+    isLatestSnapshot?: boolean
+    isInstalled?: boolean
+    inheritsFrom?: string
+  }
+
+  interface VersionManifest {
+    versions: VersionInfo[]
+  }
+
+  interface CustomVersionJson {
+    inheritsFrom?: string
+    [key: string]: any
+  }
+
+  ipcMain.handle('fetchMinecraftVersions', async (): Promise<VersionManifest> => {
+    try {
+      console.log('Fetching Minecraft version data...')
+
+      // 1. Obtener manifest oficial
+      const manifestResponse = await fetch(
+        'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
+      )
+      if (!manifestResponse.ok) throw new Error('Failed to fetch Minecraft manifest')
+      const manifest = (await manifestResponse.json()) as MojangManifest
+
+      // 2. Obtener versiones instaladas
+      const versionsDir = path.join(store.get('paths.minecraft') as string, '/versions')
+
+      console.log(versionsDir)
+
+      const installedVersions: string[] = []
+      const customVersions: VersionInfo[] = []
+
+      if (fs.existsSync(versionsDir)) {
+        const versionFolders = fs.readdirSync(versionsDir)
+
+        for (const folder of versionFolders) {
+          const versionJsonPath = path.join(versionsDir, folder, `${folder}.json`)
+
+          if (fs.existsSync(versionJsonPath)) {
+            try {
+              const versionData: CustomVersionJson = JSON.parse(
+                fs.readFileSync(versionJsonPath, 'utf-8')
+              )
+
+              if (versionData.inheritsFrom) {
+                // Es una versión personalizada (modloader)
+                customVersions.push({
+                  id: folder,
+                  type: 'custom',
+                  inheritsFrom: versionData.inheritsFrom
+                })
+              } else if (manifest.versions.some((v) => v.id === folder)) {
+                // Es una versión oficial instalada
+                installedVersions.push(folder)
+              } else {
+                // Podría ser una versión personalizada sin inheritsFrom
+                customVersions.push({
+                  id: folder,
+                  type: 'custom'
+                })
+              }
+            } catch (e) {
+              console.error(`Error reading version ${folder}:`, e)
+            }
+          }
+        }
+      }
+
+      // 3. Procesar y combinar los datos
+      const result: VersionManifest = {
+        versions: []
+      }
+
+      // Procesar versiones oficiales
+      const officialVersions: VersionInfo[] = manifest.versions.map((v) => ({
+        id: v.id,
+        type: v.type === 'release' || v.type === 'snapshot' ? v.type : 'release',
+        releaseTime: v.releaseTime
+          ? new Date(v.releaseTime).toLocaleDateString('es-ES')
+          : undefined,
+        isLatestRelease: v.id === manifest.latest.release,
+        isLatestSnapshot: v.id === manifest.latest.snapshot,
+        isInstalled: installedVersions.includes(v.id)
+      }))
+
+      // Ordenar versiones oficiales (más recientes primero)
+      officialVersions.sort(
+        (a, b) => new Date(b.releaseTime || 0).getTime() - new Date(a.releaseTime || 0).getTime()
+      )
+
+      // Añadir versiones oficiales al resultado
+      result.versions.push(...officialVersions)
+
+      // Procesar versiones personalizadas
+      customVersions.forEach((custom) => {
+        // Buscar la versión padre en la lista oficial
+        const parentIndex = custom.inheritsFrom
+          ? result.versions.findIndex((v) => v.id === custom.inheritsFrom)
+          : -1
+
+        if (parentIndex >= 0) {
+          // Insertar después de la versión padre
+          result.versions.splice(parentIndex + 1, 0, {
+            id: custom.id,
+            type: 'custom',
+            inheritsFrom: custom.inheritsFrom
+          })
+        } else {
+          // Añadir al final si no encontramos padre
+          result.versions.push({
+            id: custom.id,
+            type: 'custom',
+            inheritsFrom: custom.inheritsFrom
+          })
+        }
+      })
+
+      return result
+    } catch (err) {
+      console.error('Error loading version data:', err)
       throw err
     }
   })

@@ -3,6 +3,9 @@ import { electronAPI } from '@electron-toolkit/preload'
 import fs from 'fs'
 import path from 'path'
 import vdf from 'vdf-parser'
+import Store from 'electron-store'
+
+const store = new Store()
 
 // Custom APIs for renderer
 const api = {
@@ -101,6 +104,11 @@ if (process.contextIsolated) {
         const avatar = getSteamAvatar(user.steamId)
         return { ...user, avatar }
       }
+    })
+    contextBridge.exposeInMainWorld('storage', {
+      get: (key: string) => store.get(key),
+      set: (key: string, value: unknown) => store.set(key, value)
+      // Puedes añadir más métodos si los necesitas (delete, has, etc.)
     })
   } catch (error) {
     console.error('ContextBridge Error:', error)

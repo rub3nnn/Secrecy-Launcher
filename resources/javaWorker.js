@@ -152,7 +152,7 @@ async function processJDKInstallation() {
     if (success) {
       parentPort.postMessage({
         type: 'done',
-        javaPath: path.join(extractPath, directoryName, 'bin', 'java.exe'),
+        javaPath: path.join(extractPath, directoryName, 'bin', 'javaw.exe'),
         extractionErrors
       })
     }
