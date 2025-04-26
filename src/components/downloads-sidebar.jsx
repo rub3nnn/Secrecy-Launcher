@@ -49,7 +49,7 @@ export function DownloadsSidebar({ games, isOpen, onClose }) {
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
           >
             <div className="p-4 border-b flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -128,7 +128,8 @@ export function DownloadsSidebar({ games, isOpen, onClose }) {
                               onClick={() => cancelDownload(game.id)}
                               disabled={
                                 game.download.status === 'paused' ||
-                                game.download.status === 'resuming'
+                                game.download.status === 'resuming' ||
+                                game.download.status === 'installing'
                               }
                             >
                               <X className="h-4 w-4" />

@@ -5,7 +5,6 @@ import { UpdateNotification } from '@/components/update'
 import { AppErrorDialog } from '@/components/app-error-dialog'
 import { MinecraftLauncher } from '@/components/minecraft-launcher'
 import { ScrollArea } from '@/components/ui/scroll-area'
-
 function App() {
   const [gameData, setGameData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -21,6 +20,7 @@ function App() {
     errorCode: '',
     errorDetails: ''
   })
+  const [scrollPosition, setScrollPosition] = useState(0)
 
   // Memoized handler for errors
   const handleErrors = useCallback((error) => {
@@ -115,7 +115,8 @@ function App() {
             installed: true,
             installPath: data.installPath,
             exePath: data.exePath,
-            lastPlayed: newData[gameIndex].lastPlayed || 0
+            lastPlayed: newData[gameIndex].lastPlayed || 0,
+            installedVersion: data.version
           }
         }
         return newData
@@ -208,8 +209,7 @@ function App() {
   const loadPersistedGameData = useCallback(async () => {
     try {
       const baseGameData = (await window.electron.ipcRenderer.invoke('fetchGameData')) || []
-      const persistedData =
-        (await window.electron.ipcRenderer.invoke('storageGet', 'gamesState')) || {}
+      const persistedData = window.storage.get('gamesState') || {}
 
       const mergedGameData = baseGameData.map((game) => {
         if (persistedData[game.id]) {
@@ -231,24 +231,21 @@ function App() {
   }, [])
 
   // Memoized function to save game state
-  const saveGamesState = useCallback(async (games) => {
-    try {
-      const gamesState = games.reduce((acc, game) => {
-        acc[game.id] = {
-          installed: game.installed,
-          favorite: game.favorite,
-          installPath: game.installPath,
-          lastPlayed: game.lastPlayed,
-          progress: game.progress,
-          exePath: game.exePath
-        }
-        return acc
-      }, {})
-
-      await window.electron.ipcRenderer.invoke('storageSet', 'gamesState', gamesState)
-    } catch (error) {
-      console.error('Error saving games state:', error)
-    }
+  const saveGamesState = useCallback((games) => {
+    console.log(games)
+    const gamesState = games.reduce((acc, game) => {
+      acc[game.id] = {
+        installed: game.installed,
+        favorite: game.favorite,
+        installPath: game.installPath,
+        lastPlayed: game.lastPlayed,
+        progress: game.progress,
+        exePath: game.exePath,
+        installedVersion: game.installedVersion
+      }
+      return acc
+    }, {})
+    window.storage.set('gamesState', gamesState)
   }, [])
 
   // Initial load
@@ -289,7 +286,7 @@ function App() {
         setCurrentSection={setCurrentSection}
       />
       <main className="flex-1 overflow-auto">
-        <ScrollArea className="h-full">
+        <ScrollArea className="h-full" setScrollPosition={setScrollPosition}>
           {currentSection === 'library' && (
             <GameLibrary
               gameData={memoizedGameData}
@@ -303,7 +300,7 @@ function App() {
             />
           )}
           {currentSection === 'minecraft' && (
-            <MinecraftLauncher minecraftStatus={minecraftStatus} />
+            <MinecraftLauncher minecraftStatus={minecraftStatus} scrollPosition={scrollPosition} />
           )}
         </ScrollArea>
       </main>

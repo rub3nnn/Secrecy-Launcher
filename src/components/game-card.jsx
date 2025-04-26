@@ -1,7 +1,16 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Download, MoreHorizontal, Play, RefreshCcw, Star, Pause } from 'lucide-react'
+import {
+  Download,
+  MoreHorizontal,
+  Play,
+  RefreshCcw,
+  Star,
+  Pause,
+  MonitorDown,
+  ArrowBigDownDash
+} from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -112,18 +121,26 @@ export function GameCard({
         {/* Game info overlay */}
         <div className="absolute inset-0 flex flex-col justify-between p-6 text-white">
           <div className="flex justify-between items-start">
-            {game.favorite && (
-              <Badge variant="secondary" className="mb-2">
-                <Star className="h-3 w-3 fill-current mr-1" />
-                Favorito
-              </Badge>
-            )}
+            <div className="mb-2 space-x-4">
+              {game.favorite && (
+                <Badge variant="secondary" className="">
+                  <Star className="h-3 w-3 fill-current mr-1" />
+                  Favorito
+                </Badge>
+              )}
+              {game.version && game.version !== game.installedVersion && (
+                <Badge variant="outline" className="mb-2 text-white/80">
+                  <ArrowBigDownDash className="h-3 w-3 fill-current mr-1" />
+                  Actualización disponible
+                </Badge>
+              )}
+            </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
-                  className="h-8 w-8 text-white hover:bg-white/20"
+                  className="h-8 w-8 bg-transparent text-white hover:border-white/20 hover:bg-white/20"
                 >
                   <MoreHorizontal className="h-4 w-4" />
                   <span className="sr-only">Más opciones</span>
@@ -134,6 +151,16 @@ export function GameCard({
                 <DropdownMenuItem onClick={onToggleFavorite}>
                   {game.favorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
                 </DropdownMenuItem>
+                {game.version && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      window.electron.ipcRenderer.send('installGame', game, true)
+                      setIsDownloadsSidebarOpen(true)
+                    }}
+                  >
+                    Forzar actualización
+                  </DropdownMenuItem>
+                )}
                 {game.installed && (
                   <DropdownMenuItem onClick={onUninstall}>Desinstalar</DropdownMenuItem>
                 )}
@@ -172,18 +199,35 @@ export function GameCard({
                 Ver detalles
               </Button>
               {game.url &&
-                (game.installed ? (
-                  <Button
-                    size="lg"
-                    variant="default"
-                    className="flex-1"
-                    onClick={() => {
-                      window.electron.ipcRenderer.send('launchGame', game)
-                    }}
-                  >
-                    <Play className="mr-2 h-4 w-4" />
-                    Jugar
-                  </Button>
+                (game.installed && (!game.download || game.download.status === 'completed') ? (
+                  game.version && game.version !== game.installedVersion ? (
+                    !game.download && (
+                      <Button
+                        size="lg"
+                        variant="default"
+                        className="flex-1"
+                        onClick={() => {
+                          window.electron.ipcRenderer.send('installGame', game)
+                          setIsDownloadsSidebarOpen(true)
+                        }}
+                      >
+                        <MonitorDown className="mr-2 h-4 w-4" />
+                        Actualizar
+                      </Button>
+                    )
+                  ) : (
+                    <Button
+                      size="lg"
+                      variant="default"
+                      className="flex-1"
+                      onClick={() => {
+                        window.electron.ipcRenderer.send('launchGame', game)
+                      }}
+                    >
+                      <Play className="mr-2 h-4 w-4" />
+                      Jugar
+                    </Button>
+                  )
                 ) : game.download ? (
                   game.download.status != 'completed' ? (
                     <Button

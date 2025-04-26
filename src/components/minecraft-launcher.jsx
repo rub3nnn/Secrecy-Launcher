@@ -63,7 +63,7 @@ const Microsoft = ({ className }) => (
 const DEFAULT_MINECRAFT_PATH = storage.get('paths.appData') + '\\.minecraft'
 const SECRECY_LAUNCHER_PATH = storage.get('paths.userData') + '\\.minecraft'
 
-export function MinecraftLauncher({ minecraftStatus }) {
+export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
   useEffect(() => {
     console.log(minecraftStatus)
   }, [minecraftStatus])
@@ -367,7 +367,8 @@ export function MinecraftLauncher({ minecraftStatus }) {
     setIsLoadingNews(true)
     try {
       const news = await window.electron.ipcRenderer.invoke('fetchMinecraftNews')
-      setNews(news.article_grid || [])
+      console.log(news.result.results)
+      setNews(news.result.results || [])
     } catch (error) {
       console.error('Error cargando noticias:', error)
       setNewsError(error.message)
@@ -409,6 +410,45 @@ export function MinecraftLauncher({ minecraftStatus }) {
 
   return (
     <>
+      {true && (
+        <div
+          className={`sticky top-0 z-1 bg-gradient-to-r from-green-900 to-green-950 shadow-md transform transition-all duration-300 ease-in-out mb-[-56px] ${scrollPosition > 250 ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full pointer-events-none'}`}
+        >
+          <div className="container mx-auto py-2 px-6">
+            <div className="flex items-center justify-between">
+              <div className="text-white">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold">{selectedVersion.id || 'Elige una versión'}</h2>
+                </div>
+              </div>
+              <Button
+                size="default"
+                className="gap-2 px-6 bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => {
+                  setIsPlaying(true)
+                  window.electron.ipcRenderer.send('launch-minecraft')
+                }}
+                disabled={isPlaying || !selectedVersion}
+              >
+                {isPlaying ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    {minecraftStatus.stage === 'installing-java' && 'Instalando Java...'}
+                    {minecraftStatus.stage === 'completed-java' && 'Cargando...'}
+                    {minecraftStatus.stage === 'installing-minecraft' && 'Descargando recursos...'}
+                    {minecraftStatus.stage === 'launching' && 'Iniciando juego...'}
+                  </span>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4" />
+                    Jugar
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header con video de fondo */}
       <div className="relative h-64 overflow-hidden">
         {/* Video de fondo */}
@@ -440,7 +480,7 @@ export function MinecraftLauncher({ minecraftStatus }) {
             {/* Información de usuario */}
             {userAccount && (
               <div
-                className="flex items-center gap-2 bg-black/30 px-3 py-1.5 rounded-full cursor-pointer hover:bg-black/40 transition-colors"
+                className="flex items-center gap-2 bg-black/30 px-3 py-1.5 rounded-full pl-1.5 cursor-pointer hover:bg-black/40 transition-colors"
                 onClick={() => setShowAccountModal(true)}
               >
                 <div
@@ -459,11 +499,10 @@ export function MinecraftLauncher({ minecraftStatus }) {
 
           <div className="mt-auto flex items-center justify-between">
             <div className="text-white">
-              <p className="text-sm opacity-80">Versión seleccionada:</p>
-
+              {selectedVersion.id && <p className="text-sm opacity-80">Versión seleccionada:</p>}
               <div className="flex items-center gap-2 group">
                 <h2 className="text-3xl font-bold tracking-tight group-hover:text-gray-400  transition-colors">
-                  {selectedVersion.id || 'Seleccionar versión'}
+                  {selectedVersion.id || 'Selecciona una versión'}
                 </h2>
               </div>
             </div>
@@ -1151,27 +1190,23 @@ export function MinecraftLauncher({ minecraftStatus }) {
                     >
                       <div className="h-48 overflow-hidden">
                         <img
-                          src={
-                            getFullImageUrl(item.default_tile.image.imageURL) || '/placeholder.svg'
-                          }
-                          alt={item.default_tile.image.alt}
+                          src={item.image}
+                          alt={item.imageAltText}
                           className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
                         />
                       </div>
                       <CardHeader className="pb-2">
                         <div className="flex justify-between items-start">
-                          <CardTitle className="text-lg">{item.default_tile.title}</CardTitle>
-                          <Badge variant="outline">{item.primary_category}</Badge>
+                          <CardTitle className="text-lg">{item.title}</CardTitle>
+                          <Badge variant="outline">{item.type}</Badge>
                         </div>
-                        <CardDescription>{item.default_tile.sub_header}</CardDescription>
+                        <CardDescription>{item.description}</CardDescription>
                       </CardHeader>
                       <CardFooter className="pt-2">
                         <Button
                           variant="outline"
                           className="w-full"
-                          onClick={() =>
-                            window.open(`https://www.minecraft.net${item.article_url}`, '_blank')
-                          }
+                          onClick={() => window.open(item.url, '_blank')}
                         >
                           <Globe className="mr-2 h-4 w-4" />
                           Leer artículo

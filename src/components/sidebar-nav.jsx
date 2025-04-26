@@ -160,7 +160,12 @@ export function SidebarNav({
                         <div
                           key={game.id}
                           onClick={() => {
-                            window.electron.ipcRenderer.send('launchGame', game)
+                            if (game.version && game.version !== game.installedVersion) {
+                              window.electron.ipcRenderer.send('installGame', game)
+                              setIsDownloadsSidebarOpen(true)
+                            } else {
+                              window.electron.ipcRenderer.send('launchGame', game)
+                            }
                           }}
                           className="block relative h-16 rounded-md overflow-hidden group cursor-pointer"
                         >

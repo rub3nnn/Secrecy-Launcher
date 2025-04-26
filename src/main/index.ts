@@ -211,8 +211,15 @@ app.whenReady().then(() => {
         needExtract: boolean
         extractPassword?: string
         executable?: string
-      }
+        version: string
+        updateVersion: string
+        updateUrl: string
+        updateExtractPath: string
+        installedVersion: string
+      },
+      update = gameData.version ? gameData.installedVersion !== gameData.version : false
     ) => {
+      console.log(update)
       log.info('Installing game:', gameData.title)
 
       const downloadPath = path.join(
@@ -220,7 +227,7 @@ app.whenReady().then(() => {
         'game-downloads',
         gameData.id.toString()
       )
-      const extractPath = path.join(downloadPath, 'extracted')
+      const extractPath = path.join(downloadPath, 'extracted', update && gameData.updateExtractPath)
 
       ensureDirectory(downloadPath)
       ensureDirectory(extractPath)
@@ -230,7 +237,7 @@ app.whenReady().then(() => {
         const message =
           total !== undefined
             ? `Descargando parte ${index! + 1} de ${total}`
-            : 'Descargando archivos del juego'
+            : `Descargando archivos ${update ? 'de la actualización' : 'del juego'}...`
 
         const dl = new DownloaderHelper(url, downloadPath, {
           retry: { maxRetries: 3, delay: 3000 },
@@ -254,7 +261,8 @@ app.whenReady().then(() => {
             speed: stats.speed,
             downloaded: stats.downloaded,
             total: stats.total,
-            message: message
+            message: message,
+            update
           })
           updateProgressBar(progress / 100)
         })
@@ -280,17 +288,21 @@ app.whenReady().then(() => {
       try {
         let filePaths: string[] = []
 
-        // Manejar múltiples URLs o una sola (COMPORTAMIENTO ORIGINAL)
-        if (Array.isArray(gameData.url)) {
-          const totalParts = gameData.url.length
-          for (let i = 0; i < totalParts; i++) {
-            const url = gameData.url[i]
-            if (url) {
-              filePaths.push(await downloadFile(url, i, totalParts))
+        if (update && gameData.updateUrl) {
+          filePaths.push(await downloadFile(gameData.updateUrl))
+        } else {
+          // Manejar múltiples URLs o una sola (COMPORTAMIENTO ORIGINAL)
+          if (Array.isArray(gameData.url)) {
+            const totalParts = gameData.url.length
+            for (let i = 0; i < totalParts; i++) {
+              const url = gameData.url[i]
+              if (url) {
+                filePaths.push(await downloadFile(url, i, totalParts))
+              }
             }
+          } else if (typeof gameData.url === 'string') {
+            filePaths.push(await downloadFile(gameData.url))
           }
-        } else if (typeof gameData.url === 'string') {
-          filePaths.push(await downloadFile(gameData.url))
         }
 
         activeDownloads.delete(gameData.id)
@@ -299,7 +311,9 @@ app.whenReady().then(() => {
           return event.sender.send('installation-complete', {
             id: gameData.id,
             installPath: downloadPath,
-            exePath: filePaths[0] // Devuelve el primer archivo si no hay extracción
+            exePath: filePaths[0], // Devuelve el primer archivo si no hay extracción
+            update: update,
+            version: gameData.version
           })
         }
 
@@ -307,7 +321,9 @@ app.whenReady().then(() => {
           id: gameData.id,
           stage: 'extracting',
           progress: 0,
-          message: 'Preparando para instalar archivos...'
+          message: update
+            ? 'Preparando para actualizar los archivos...'
+            : 'Preparando para instalar archivos...'
         })
 
         updateProgressBar(-1)
@@ -347,13 +363,13 @@ app.whenReady().then(() => {
 
             const notifyMessage =
               msg.extractionErrors > 0
-                ? `El juego ${gameData.title} se instaló, pero hubo ${msg.extractionErrors} errores durante la extracción.`
-                : `El juego ${gameData.title} se ha instalado correctamente.`
+                ? `El juego ${gameData.title} se ${update ? 'actualizó' : 'instaló'}, pero hubo ${msg.extractionErrors} errores durante la extracción.`
+                : `El juego ${gameData.title} se ha ${update ? 'actualizado' : 'instalado'} correctamente.`
 
             showNotificationIfBackground(
               msg.extractionErrors > 0
-                ? 'Instalación completada con advertencias'
-                : 'Instalación completada',
+                ? `${update ? 'Actualización' : 'Instalación'} completada con advertencias`
+                : `${update ? 'Actualización' : 'Instalación'} completada`,
               notifyMessage
             )
 
@@ -362,7 +378,9 @@ app.whenReady().then(() => {
               installPath: downloadPath,
               exePath: gameData.executable
                 ? path.join(extractPath, gameData.executable)
-                : extractPath
+                : extractPath,
+              update: update,
+              version: gameData.version
             })
           }
         })
@@ -372,7 +390,7 @@ app.whenReady().then(() => {
           updateProgressBar(-1)
           event.sender.send('download-error', {
             id: gameData.id,
-            description: `Error al instalar ${gameData.title}`,
+            description: `Error al ${update ? 'actualizar' : 'instalar'} ${gameData.title}`,
             error: err.message,
             errorCode: 'EXTRACTION_WORKER_ERROR'
           })
@@ -382,7 +400,7 @@ app.whenReady().then(() => {
         updateProgressBar(-1)
         event.sender.send('download-error', {
           id: gameData.id,
-          description: `Error al descargar ${gameData.title}`,
+          description: `Error al descargar ${update && 'la actualización de '}${gameData.title}`,
           error: error.message,
           errorCode: error.status || 'DOWNLOAD_ERROR'
         })
@@ -1082,7 +1100,7 @@ app.whenReady().then(() => {
     log.info('Fetching game data...')
     try {
       const response = await fetch(
-        'https://www.minecraft.net/content/minecraftnet/language-masters/es-es/articles/jcr:content/root/container/image_grid_a.articles.page-1.json'
+        'https://net-secondary.web.minecraft-services.net/api/v1.0/es-es/search?pageSize=24&sortType=Recent&category=News'
       )
       if (!response.ok) {
         throw new Error('No se pudo cargar los datos de los juegos')
