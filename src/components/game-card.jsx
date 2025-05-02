@@ -128,7 +128,7 @@ export function GameCard({
                   Favorito
                 </Badge>
               )}
-              {game.version && game.version !== game.installedVersion && (
+              {game.version && game.version !== game.installedVersion && game.installed && (
                 <Badge variant="outline" className="mb-2 text-white/80">
                   <ArrowBigDownDash className="h-3 w-3 fill-current mr-1" />
                   Actualización disponible
@@ -151,7 +151,7 @@ export function GameCard({
                 <DropdownMenuItem onClick={onToggleFavorite}>
                   {game.favorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
                 </DropdownMenuItem>
-                {game.version && (
+                {game.version && game.installed && (
                   <DropdownMenuItem
                     onClick={() => {
                       window.electron.ipcRenderer.send('installGame', game, true)

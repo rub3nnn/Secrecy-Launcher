@@ -227,7 +227,11 @@ app.whenReady().then(() => {
         'game-downloads',
         gameData.id.toString()
       )
-      const extractPath = path.join(downloadPath, 'extracted', update && gameData.updateExtractPath)
+      const extractPath = path.join(
+        downloadPath,
+        'extracted',
+        update ? gameData.updateExtractPath : ''
+      )
 
       ensureDirectory(downloadPath)
       ensureDirectory(extractPath)
