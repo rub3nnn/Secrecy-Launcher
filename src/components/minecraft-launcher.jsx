@@ -46,6 +46,63 @@ import {
 } from 'lucide-react'
 import { DualRangeSlider } from '@/components/ui/range-slider'
 import SkinViewerComponent from '@/components/minecraft-skin-viewer'
+import { use } from 'react'
+;(function () {
+  var f, g
+  f = (function () {
+    function a() {}
+    a.prototype.f = function (a) {
+      var c, b
+      c = []
+      for (b in a)
+        void 0 !== a[b] &&
+          a.hasOwnProperty(b) &&
+          c.push(encodeURIComponent(b) + '=' + encodeURIComponent(a[b]))
+      return '?' + c.join('&')
+    }
+    a.prototype.a = function (a, c, b) {
+      var d
+      'function' === typeof c && ((b = c), (c = {}))
+      c = this.f(c)
+      d = new XMLHttpRequest()
+      d.onerror = function () {
+        b(!0)
+      }
+      d.onload = function () {
+        var a
+        try {
+          a = JSON.parse(d.responseText)
+        } catch (c) {
+          return b(c)
+        }
+        if ('error' === a.status) return b(a.error)
+        b(void 0, a)
+      }
+      d.open('GET', 'https://mcapi.us' + a + c, !0)
+      d.send()
+    }
+    return a
+  })()
+  g = (function () {
+    function a() {}
+    var e
+    e = new f()
+    a.prototype.c = function (a, b, d) {
+      'function' === typeof b && ((d = b), (b = {}))
+      b.ip = a
+      e.a('/server/status', b, d)
+    }
+    a.prototype.getServerStatus = a.prototype.c
+    a.prototype.b = function (a, b, d) {
+      'function' === typeof b && ((d = b), (b = {}))
+      b.ip = a
+      e.a('/server/query', b, d)
+    }
+    a.prototype.getServerQuery = a.prototype.b
+    return a
+  })()
+  window.MinecraftAPI = new g()
+})()
 
 const storage = window.storage
 
@@ -64,6 +121,8 @@ const DEFAULT_MINECRAFT_PATH = storage.get('paths.appData') + '\\.minecraft'
 const SECRECY_LAUNCHER_PATH = storage.get('paths.userData') + '\\.minecraft'
 
 export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
+  const [currentTab, setCurrentTab] = useState('versions')
+
   useEffect(() => {
     console.log(minecraftStatus)
   }, [minecraftStatus])
@@ -165,6 +224,73 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
 
   const handlePreviousStep = () => {
     setSetupStep(1)
+  }
+
+  const [secrecyServerStatus, setSecrecyServerStatus] = useState({
+    online: false,
+    players: 0,
+    maxPlayers: 0,
+    motd: '',
+    favicon: ''
+  })
+  const [secrecyPlayerList, setSecrecyPlayerList] = useState([])
+  const [secrecyModsInstalled, setSecrecyModsInstalled] = useState(false)
+  const [isInstallingMods, setIsInstallingMods] = useState(false)
+  const [modInstallProgress, setModInstallProgress] = useState(0)
+  const [isConnectingToServer, setIsConnectingToServer] = useState(false)
+
+  useEffect(() => {
+    async function fetchServerInfo() {
+      const status = (await window.electron.ipcRenderer.invoke('fetchServerInfo')) || []
+
+      setSecrecyPlayerList(status.players.sample || [])
+      setSecrecyServerStatus({
+        online: status.online,
+        players: status.players.now,
+        maxPlayers: status.players.max,
+        version: status.server.name,
+        motd: status.motd,
+        favicon: status.favicon
+      })
+    }
+
+    fetchServerInfo()
+  }, [])
+
+  // Función para instalar mods de Secrecy
+  const handleInstallSecrecyMods = () => {
+    setIsInstallingMods(true)
+    setModInstallProgress(0)
+
+    // Simular instalación de mods
+    const installInterval = setInterval(() => {
+      setModInstallProgress((prev) => {
+        const newProgress = prev + Math.random() * 8
+        if (newProgress >= 100) {
+          clearInterval(installInterval)
+          setIsInstallingMods(false)
+          setSecrecyModsInstalled(true)
+          return 100
+        }
+        return newProgress
+      })
+    }, 300)
+  }
+
+  const handleConnectToSecrecy = () => {
+    if (!secrecyModsInstalled) {
+      handleInstallSecrecyMods()
+      return
+    }
+
+    setIsConnectingToServer(true)
+
+    // Simular conexión al servidor
+    setTimeout(() => {
+      setIsConnectingToServer(false)
+      // Aquí se lanzaría el juego con la configuración del servidor
+      console.log('Conectando al servidor de Secrecy Mods...')
+    }, 3000)
   }
 
   // Modificar la función handleMicrosoftLogin para añadir animaciones
@@ -498,17 +624,28 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
           </div>
 
           <div className="mt-auto flex items-center justify-between">
-            <div className="text-white">
-              {selectedVersion.id && <p className="text-sm opacity-80">Versión seleccionada:</p>}
-              <div className="flex items-center gap-2 group">
-                <h2 className="text-3xl font-bold tracking-tight group-hover:text-gray-400  transition-colors">
-                  {selectedVersion.id || 'Selecciona una versión'}
-                </h2>
+            {currentTab === 'smods' ? (
+              <div className="text-violet-500">
+                <p className="text-sm">Servidor</p>
+                <div className="flex items-center gap-2 group">
+                  <h2 className="text-3xl font-bold tracking-tight group-hover:text-gray-400  transition-colors">
+                    Secrecy Mods
+                  </h2>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="text-white">
+                {selectedVersion.id && <p className="text-sm opacity-80">Versión seleccionada:</p>}
+                <div className="flex items-center gap-2 group">
+                  <h2 className="text-3xl font-bold tracking-tight group-hover:text-gray-400  transition-colors">
+                    {selectedVersion.id || 'Selecciona una versión'}
+                  </h2>
+                </div>
+              </div>
+            )}
             <Button
               size="lg"
-              className="gap-2 px-8 bg-green-600 hover:bg-green-700 text-white"
+              className={`gap-2 px-8 transition-colors text-white ${currentTab === 'smods' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-green-600 hover:bg-green-700'}`}
               onClick={
                 () => {
                   setIsPlaying(true)
@@ -553,9 +690,110 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
           </>
         )}
       </div>
+      {/* Banner de Secrecy Mods Server */}
+      <div className="container mx-auto px-6 pt-2">
+        <div className="relative overflow-hidden rounded-lg bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-600 p-6  text-white mb-3">
+          <div className="relative ">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-2xl font-bold mb-1">Secrecy Mods Server</h2>
+                <p className="text-white/80 text-sm">Servidor oficial con mods exclusivos</p>
+              </div>
+              <div className="text-right">
+                <div
+                  className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${secrecyServerStatus.online ? 'bg-green-500/20 text-green-100' : 'bg-red-500/20 text-red-100'}`}
+                >
+                  <div
+                    className={`w-3 h-3 rounded-full ${secrecyServerStatus.online ? 'bg-green-400' : 'bg-red-400'}`}
+                  ></div>
+                  <span className="font-medium">
+                    {secrecyServerStatus.online ? 'Online' : 'Offline'}
+                  </span>
+                </div>
+              </div>
+            </div>
 
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                {/* Contador de jugadores */}
+                <div className="bg-white/10 rounded-lg px-4 py-2 text-center">
+                  <div className="text-xl font-bold">
+                    {secrecyServerStatus.players}/{secrecyServerStatus.maxPlayers}
+                  </div>
+                  <div className="text-xs text-white/70">Jugadores</div>
+                </div>
+
+                {/* Algunos jugadores conectados */}
+                <div className="flex items-center gap-3">
+                  {secrecyPlayerList.length > 0 && (
+                    <span className="text-sm text-white/70">Conectados:</span>
+                  )}
+                  <div className="flex -space-x-2">
+                    {secrecyPlayerList.slice(0, 5).map((player, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={'https://mc-heads.net/avatar/' + player.name}
+                          alt={player.name}
+                          className="w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60 transition-colors"
+                        />
+                        {/* Tooltip con el nombre */}
+                        <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                          {player.name}
+                        </div>
+                      </div>
+                    ))}
+                    {secrecyPlayerList.length > 5 && (
+                      <div className="w-8 h-8 rounded-full bg-white/20 border-2 border-white/20 flex items-center justify-center">
+                        <span className="text-xs font-medium">+{secrecyPlayerList.length - 5}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Botón de jugar */}
+              <Button
+                size="lg"
+                className="gap-2 px-8 bg-white/20 hover:bg-white/30 text-white border border-white/30 hover:border-white/50"
+                onClick={
+                  () => {
+                    setIsPlaying(true)
+                    window.electron.ipcRenderer.send('launch-server')
+                  }
+                  //handlePlayGame
+                }
+                disabled={isPlaying}
+              >
+                {isPlaying ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Cargando...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4" />
+                    Jugar
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Barra de progreso de instalación */}
+            {isInstallingMods && (
+              <div className="mt-4">
+                <div className="w-full bg-white/20 rounded-full h-2">
+                  <div
+                    className="bg-white h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${modInstallProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
       <div className={`container mx-auto p-6 transition-all ${isPlaying ? 'pt-6' : 'pt-3'}`}>
-        <Tabs defaultValue="versions">
+        <Tabs value={currentTab} onValueChange={setCurrentTab}>
           <TabsList className="mb-6">
             <TabsTrigger value="versions">Versiones</TabsTrigger>
             <TabsTrigger value="settings">Configuración</TabsTrigger>
@@ -709,14 +947,15 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
                                   Última
                                 </Badge>
                               )}
-                              {version.isLatestSnapshot && (
-                                <Badge
-                                  variant="default"
-                                  className="bg-amber-600 hover:bg-amber-700"
-                                >
-                                  Última
-                                </Badge>
-                              )}
+                              {version.isLatestSnapshot &&
+                                version.isLatestSnapshot != version.isLatestRelease && (
+                                  <Badge
+                                    variant="default"
+                                    className="bg-amber-600 hover:bg-amber-700"
+                                  >
+                                    Última
+                                  </Badge>
+                                )}
                             </CardTitle>
 
                             <CardDescription className="flex items-center gap-1 mt-1">

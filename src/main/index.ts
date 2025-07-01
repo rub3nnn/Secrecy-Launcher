@@ -1020,10 +1020,10 @@ app.whenReady().then(() => {
       }
       const memoryAllocation = store.get('minecraft.settings.memoryAllocation') as [number, number]
 
-      const opts = {
+      const opts: any = {
         authorization:
           userAccount.type === 'premium'
-            ? premiumSession // este es el token correcto generado por msmc
+            ? premiumSession
             : Authenticator.getAuth(userAccount.username ?? 'Player'),
 
         root: minecraftDir,
@@ -1043,6 +1043,65 @@ app.whenReady().then(() => {
           min: memoryAllocation[0],
           max: memoryAllocation[1]
         }
+      }
+
+      // Opcionales, si tienen valor
+
+      const quickPlayType = store.get('minecraft.settings.quickPlayType') as
+        | 'singleplayer'
+        | 'multiplayer'
+        | 'realms'
+        | 'legacy'
+        | undefined
+
+      const quickPlayIdentifier = store.get('minecraft.settings.quickPlayIdentifier') as string
+
+      if (quickPlayType && quickPlayIdentifier) {
+        opts.quickPlay = {
+          type: quickPlayType,
+          identifier: quickPlayIdentifier
+        }
+      }
+
+      const fullscreen = store.get('minecraft.settings.fullscreen')
+      const windowWidth = store.get('minecraft.settings.windowWidth')
+      const windowHeight = store.get('minecraft.settings.windowHeight')
+
+      if (fullscreen !== undefined && windowWidth && windowHeight) {
+        opts.window = {
+          fullscreen: fullscreen as boolean,
+          width: windowWidth as number,
+          height: windowHeight as number
+        }
+      }
+
+      const proxyHost = store.get('minecraft.settings.proxyHost') as string
+      const proxyPort = store.get('minecraft.settings.proxyPort') as string
+      const proxyUsername = store.get('minecraft.settings.proxyUsername') as string
+      const proxyPassword = store.get('minecraft.settings.proxyPassword') as string
+
+      if (proxyHost && proxyPort) {
+        opts.proxy = {
+          host: proxyHost,
+          port: proxyPort,
+          username: proxyUsername || undefined,
+          password: proxyPassword || undefined
+        }
+      }
+
+      const timeout = store.get('minecraft.settings.minecraftTimeout')
+      if (timeout !== undefined && timeout !== null) {
+        opts.timeout = timeout as number
+      }
+
+      const customLaunchArgs = store.get('minecraft.settings.customMcArgs')
+      if (Array.isArray(customLaunchArgs) && customLaunchArgs.length > 0) {
+        opts.customLaunchArgs = customLaunchArgs
+      }
+
+      const customJavaArgs = store.get('minecraft.settings.customJavaArgs')
+      if (Array.isArray(customJavaArgs) && customJavaArgs.length > 0) {
+        opts.customArgs = customJavaArgs
       }
 
       function launchMinecraft() {
@@ -1083,12 +1142,198 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.on('launch-server', async () => {
+    const serverDataUrl = 'https://secrecyfiles.github.io/fileshoster/secrecyserver/data.json'
+    const minecraftDir = path.join(currentPaths.userData, 'secrecy-server')
+
+    // Asegurarse de que el directorio existe
+    ensureDirectory(minecraftDir)
+
+    try {
+      // 1. Obtener información del servidor
+      const response = await fetch(serverDataUrl)
+      if (!response.ok) {
+        throw new Error('No se pudo obtener la información del servidor')
+      }
+      const serverData = await response.json()
+
+      // 2. Verificar si necesitamos descargar la nueva versión
+      const storedVersion = store.get('minecraft.server.version')
+      const needsDownload = storedVersion !== serverData.version
+
+      if (needsDownload) {
+        mainWindow?.webContents.send('minecraft-status', {
+          stage: 'downloading-server',
+          progress: 0,
+          message: 'Descargando archivos del servidor...'
+        })
+
+        // 3. Descargar el archivo comprimido
+        const downloadPath = path.join(minecraftDir, 'server.rar')
+        const dl = new DownloaderHelper(serverData.fileUrl, minecraftDir, {
+          fileName: 'server.rar',
+          override: true,
+          retry: { maxRetries: 3, delay: 3000 }
+        })
+
+        // Eventos de progreso de descarga
+        dl.on('progress', (stats) => {
+          const progress = Math.floor(stats.progress)
+          mainWindow?.webContents.send('minecraft-status', {
+            stage: 'downloading-server',
+            progress: progress,
+            message: `Descargando servidor... ${progress}%`
+          })
+        })
+
+        await new Promise((resolve, reject) => {
+          dl.on('end', () => {
+            mainWindow?.webContents.send('minecraft-status', {
+              stage: 'extracting-server',
+              progress: 0,
+              message: 'Extrayendo archivos del servidor...'
+            })
+            resolve(true)
+          })
+          dl.on('error', reject)
+          dl.start().catch(reject)
+        })
+
+        // 4. Extraer el archivo
+        const worker = new Worker(path.join(__dirname, '../../resources/extractWorker.js'), {
+          workerData: {
+            filePaths: [downloadPath],
+            extractPath: minecraftDir,
+            deleteAfter: true
+          }
+        })
+
+        await new Promise((resolve, reject) => {
+          worker.on('message', (msg) => {
+            if (msg.type === 'progress') {
+              mainWindow?.webContents.send('minecraft-status', {
+                stage: 'extracting-server',
+                progress: msg.progress,
+                message: `Extrayendo archivos... ${msg.progress}%`
+              })
+            }
+            if (msg.type === 'done') {
+              // Eliminar el archivo RAR después de la extracción
+              try {
+                fs.unlinkSync(downloadPath)
+                console.log('Archivo RAR eliminado después de la extracción')
+              } catch (err) {
+                console.error('Error al eliminar el archivo RAR:', err)
+              }
+              resolve(true)
+            }
+          })
+          worker.on('error', (err) => {
+            console.error('Error en el worker de extracción:', err)
+            reject(err)
+          })
+          worker.on('exit', (code) => {
+            if (code !== 0) {
+              console.error(`Worker de extracción terminó con código ${code}`)
+              reject(new Error(`Worker exited with code ${code}`))
+            }
+          })
+        })
+
+        // 5. Actualizar la versión almacenada
+        store.set('minecraft.server.version', serverData.version)
+      }
+
+      // 6. Lanzar el servidor (código existente)
+      const javaPath = (await getJava(21)) as string
+      console.log('Java encontrado en:', javaPath)
+      const userAccount = store.get('minecraft.userAccount') as {
+        type: string
+        username: string
+      }
+      const premiumSession = store.get('minecraft.auth') as any
+      const memoryAllocation = store.get('minecraft.settings.memoryAllocation') as [number, number]
+
+      const opts: any = {
+        authorization:
+          userAccount.type === 'premium'
+            ? premiumSession
+            : Authenticator.getAuth(userAccount.username ?? 'Player'),
+        root: minecraftDir,
+        javaPath: javaPath,
+        version: {
+          number: '1.21.4',
+          custom: 'secrecy',
+          type: 'Secrecy'
+        },
+        memory: {
+          min: memoryAllocation[0],
+          max: memoryAllocation[1]
+        }
+      }
+
+      // Resto de opciones (código existente)
+      // ...
+
+      function launchMinecraft() {
+        launcher.launch(opts)
+        launcher.on('debug', (data) => console.log('Minecraft debug:', data))
+        launcher.on('data', (data) => console.log('Minecraft data:', data))
+        launcher.on('progress', (e) => {
+          mainWindow?.webContents.send('minecraft-status', {
+            stage: 'installing-minecraft',
+            progress: (e.task / e.total) * 100,
+            message:
+              'Descargando archivos de Minecraft... ' + ((e.task / e.total) * 100).toFixed(0) + '%'
+          })
+        })
+        launcher.on('arguments', () => {
+          mainWindow?.webContents.send('minecraft-status', {
+            stage: 'launching',
+            message: 'Iniciando..'
+          })
+          mainWindow?.hide()
+        })
+        launcher.on('close', () => {
+          mainWindow?.show()
+          mainWindow?.webContents.send('minecraft-status', { stage: 'closed' })
+        })
+      }
+
+      launchMinecraft()
+    } catch (error) {
+      console.error('Error al lanzar el servidor:', error)
+      if (mainWindow) {
+        mainWindow.show()
+        mainWindow.webContents.send('minecraft-error', {
+          message: 'Error al lanzar el servidor',
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+  })
+
   ipcMain.handle('fetchGameData', async () => {
     log.info('Fetching game data...')
     try {
       const response = await fetch(
         'https://secrecyfiles.github.io/fileshoster/secrecylauncher/data.json'
       )
+      if (!response.ok) {
+        throw new Error('No se pudo cargar los datos de los juegos')
+      }
+      const data = await response.json()
+      return data
+    } catch (err) {
+      console.error('Error al cargar los datos:', err)
+      throw err
+    }
+  })
+
+  ipcMain.handle('fetchServerInfo', async () => {
+    log.info('Fetching server info...')
+    try {
+      const response = await fetch('https://mcapi.us/server/status?ip=rub3n.es')
       if (!response.ok) {
         throw new Error('No se pudo cargar los datos de los juegos')
       }

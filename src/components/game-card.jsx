@@ -9,7 +9,8 @@ import {
   Star,
   Pause,
   MonitorDown,
-  ArrowBigDownDash
+  ArrowBigDownDash,
+  CloudAlert
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -122,6 +123,12 @@ export function GameCard({
         <div className="absolute inset-0 flex flex-col justify-between p-6 text-white">
           <div className="flex justify-between items-start">
             <div className="mb-2 space-x-4">
+              {game.warning && (
+                <Badge variant="destructive" className="text-white">
+                  <CloudAlert className="h-3 w-3 fill-current mr-1" />
+                  {game.warning || 'No disponible'}
+                </Badge>
+              )}
               {game.favorite && (
                 <Badge variant="secondary" className="">
                   <Star className="h-3 w-3 fill-current mr-1" />

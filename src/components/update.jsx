@@ -83,6 +83,7 @@ export function UpdateNotification() {
 
   return (
     <>
+      <VersionUpdateAnimation />
       {/* Notificación de actualización disponible */}
       <AnimatePresence>
         {false && (
