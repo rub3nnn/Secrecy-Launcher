@@ -225,37 +225,10 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
   const handlePreviousStep = () => {
     setSetupStep(1)
   }
-
-  const [secrecyServerStatus, setSecrecyServerStatus] = useState({
-    online: false,
-    players: 0,
-    maxPlayers: 0,
-    motd: '',
-    favicon: ''
-  })
   const [secrecyPlayerList, setSecrecyPlayerList] = useState([])
   const [secrecyModsInstalled, setSecrecyModsInstalled] = useState(false)
   const [isInstallingMods, setIsInstallingMods] = useState(false)
   const [modInstallProgress, setModInstallProgress] = useState(0)
-  const [isConnectingToServer, setIsConnectingToServer] = useState(false)
-
-  useEffect(() => {
-    async function fetchServerInfo() {
-      const status = (await window.electron.ipcRenderer.invoke('fetchServerInfo')) || []
-
-      setSecrecyPlayerList(status.players.sample || [])
-      setSecrecyServerStatus({
-        online: status.online,
-        players: status.players.now,
-        maxPlayers: status.players.max,
-        version: status.server.name,
-        motd: status.motd,
-        favicon: status.favicon
-      })
-    }
-
-    fetchServerInfo()
-  }, [])
 
   // Función para instalar mods de Secrecy
   const handleInstallSecrecyMods = () => {
@@ -696,61 +669,22 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
           <div className="relative ">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-2xl font-bold mb-1">Secrecy Mods Server</h2>
-                <p className="text-white/80 text-sm">Servidor oficial con mods exclusivos</p>
+                <h2 className="text-2xl font-bold mb-1">Versión desconectada</h2>
+                <p className="text-white/80 text-sm">
+                  Versión modificada para evitar bloqueo de red en el lanzamiento
+                </p>
               </div>
               <div className="text-right">
                 <div
-                  className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${secrecyServerStatus.online ? 'bg-green-500/20 text-green-100' : 'bg-red-500/20 text-red-100'}`}
+                  className={`inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/20 text-green-100`}
                 >
-                  <div
-                    className={`w-3 h-3 rounded-full ${secrecyServerStatus.online ? 'bg-green-400' : 'bg-red-400'}`}
-                  ></div>
-                  <span className="font-medium">
-                    {secrecyServerStatus.online ? 'Online' : 'Offline'}
-                  </span>
+                  <div className={`w-3 h-3 rounded-full bg-orange-400`}></div>
+                  <span className="font-medium">BETA</span>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-6">
-                {/* Contador de jugadores */}
-                <div className="bg-white/10 rounded-lg px-4 py-2 text-center">
-                  <div className="text-xl font-bold">
-                    {secrecyServerStatus.players}/{secrecyServerStatus.maxPlayers}
-                  </div>
-                  <div className="text-xs text-white/70">Jugadores</div>
-                </div>
-
-                {/* Algunos jugadores conectados */}
-                <div className="flex items-center gap-3">
-                  {secrecyPlayerList.length > 0 && (
-                    <span className="text-sm text-white/70">Conectados:</span>
-                  )}
-                  <div className="flex -space-x-2">
-                    {secrecyPlayerList.slice(0, 5).map((player, index) => (
-                      <div key={index} className="relative group">
-                        <img
-                          src={'https://mc-heads.net/avatar/' + player.name}
-                          alt={player.name}
-                          className="w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60 transition-colors"
-                        />
-                        {/* Tooltip con el nombre */}
-                        <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                          {player.name}
-                        </div>
-                      </div>
-                    ))}
-                    {secrecyPlayerList.length > 5 && (
-                      <div className="w-8 h-8 rounded-full bg-white/20 border-2 border-white/20 flex items-center justify-center">
-                        <span className="text-xs font-medium">+{secrecyPlayerList.length - 5}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
               {/* Botón de jugar */}
               <Button
                 size="lg"

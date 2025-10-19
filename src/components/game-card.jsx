@@ -180,7 +180,7 @@ export function GameCard({
               <h3 className="text-3xl font-bold mb-1">{game.title}</h3>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">{game.genre}</Badge>
-                {!game.url && <Badge>Próximamente disponible</Badge>}
+                {!game.url && !game.warning && <Badge>Próximamente disponible</Badge>}
                 <span className="text-sm text-white/80">
                   {game.installed
                     ? `${game.size} • ${haceCuanto(game.lastPlayed)}`
@@ -205,78 +205,77 @@ export function GameCard({
               <Button size="lg" variant="secondary" className="flex-1" onClick={onViewDetails}>
                 Ver detalles
               </Button>
-              {game.url &&
-                (game.installed && (!game.download || game.download.status === 'completed') ? (
-                  game.version && game.version !== game.installedVersion ? (
-                    !game.download && (
-                      <Button
-                        size="lg"
-                        variant="default"
-                        className="flex-1"
-                        onClick={() => {
-                          window.electron.ipcRenderer.send('installGame', game)
-                          setIsDownloadsSidebarOpen(true)
-                        }}
-                      >
-                        <MonitorDown className="mr-2 h-4 w-4" />
-                        Actualizar
-                      </Button>
-                    )
-                  ) : (
+              {game.installed && (!game.download || game.download.status === 'completed') ? (
+                game.version && game.version !== game.installedVersion ? (
+                  !game.download && (
                     <Button
                       size="lg"
                       variant="default"
                       className="flex-1"
                       onClick={() => {
-                        window.electron.ipcRenderer.send('launchGame', game)
-                      }}
-                    >
-                      <Play className="mr-2 h-4 w-4" />
-                      Jugar
-                    </Button>
-                  )
-                ) : game.download ? (
-                  game.download.status != 'completed' ? (
-                    <Button
-                      size="lg"
-                      variant="default"
-                      className="flex-1 relative overflow-hidden"
-                      disabled={game.download.status === 'installing'}
-                      onClick={() => {
+                        window.electron.ipcRenderer.send('installGame', game)
                         setIsDownloadsSidebarOpen(true)
                       }}
                     >
-                      <span className="relative z-10 flex items-center">
-                        <span className="animate-pulse mr-2">
-                          {game.download.status === 'installing' && (
-                            <RefreshCcw className="h-4 w-4 animate-spin" />
-                          )}
-                          {game.download.status === 'downloading' && (
-                            <Download className="h-4 w-4" />
-                          )}
-                          {game.download.status === 'paused' && <Pause className="h-4 w-4" />}
-                        </span>
-                        <span>
-                          {game.download.status === 'installing'
-                            ? 'Instalando...'
-                            : game.download.progress + '%'}
-                        </span>
-                      </span>
-                      <span
-                        className="absolute inset-0 bg-white/20"
-                        style={{
-                          width: `${game.download.progress}%`,
-                          transition: 'width 0.3s ease'
-                        }}
-                      />
+                      <MonitorDown className="mr-2 h-4 w-4" />
+                      Actualizar
                     </Button>
-                  ) : null
+                  )
                 ) : (
+                  <Button
+                    size="lg"
+                    variant="default"
+                    className="flex-1"
+                    onClick={() => {
+                      window.electron.ipcRenderer.send('launchGame', game)
+                    }}
+                  >
+                    <Play className="mr-2 h-4 w-4" />
+                    Jugar
+                  </Button>
+                )
+              ) : game.download ? (
+                game.download.status != 'completed' ? (
+                  <Button
+                    size="lg"
+                    variant="default"
+                    className="flex-1 relative overflow-hidden"
+                    disabled={game.download.status === 'installing'}
+                    onClick={() => {
+                      setIsDownloadsSidebarOpen(true)
+                    }}
+                  >
+                    <span className="relative z-10 flex items-center">
+                      <span className="animate-pulse mr-2">
+                        {game.download.status === 'installing' && (
+                          <RefreshCcw className="h-4 w-4 animate-spin" />
+                        )}
+                        {game.download.status === 'downloading' && <Download className="h-4 w-4" />}
+                        {game.download.status === 'paused' && <Pause className="h-4 w-4" />}
+                      </span>
+                      <span>
+                        {game.download.status === 'installing'
+                          ? 'Instalando...'
+                          : game.download.progress + '%'}
+                      </span>
+                    </span>
+                    <span
+                      className="absolute inset-0 bg-white/20"
+                      style={{
+                        width: `${game.download.progress}%`,
+                        transition: 'width 0.3s ease'
+                      }}
+                    />
+                  </Button>
+                ) : null
+              ) : (
+                game.url && (
                   <Button size="lg" variant="default" className="flex-1" onClick={onInstall}>
                     <Download className="mr-2 h-4 w-4" />
                     Instalar
                   </Button>
-                ))}
+                )
+              )}
             </div>
           </div>
         </div>

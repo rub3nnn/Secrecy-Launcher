@@ -176,6 +176,19 @@ function updateProgressBar(progress: number): void {
   }
 }
 
+// Agregar función para verificar conectividad
+async function checkInternetConnection(): Promise<boolean> {
+  try {
+    const response = await fetch('https://www.google.com', {
+      method: 'HEAD',
+      cache: 'no-cache'
+    })
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('Secrecy Launcher')
 
@@ -1006,13 +1019,40 @@ app.whenReady().then(() => {
     const minecraftDir = store.get('paths.minecraft') as string
 
     try {
+      // Verificar conexión a internet
+      const isOnline = await checkInternetConnection()
+
+      if (!isOnline) {
+        // Verificar si todos los archivos necesarios están presentes
+        const selectedVersion = store.get('minecraft.settings.selectedVersion') as {
+          type: string
+          id: string
+          inheritsFrom?: string
+        }
+
+        const versionId =
+          selectedVersion.type === 'custom' ? selectedVersion.inheritsFrom! : selectedVersion.id
+
+        const versionPath = path.join(minecraftDir, 'versions', versionId)
+        const jarPath = path.join(versionPath, `${versionId}.jar`)
+
+        if (!fs.existsSync(jarPath)) {
+          mainWindow?.webContents.send('minecraft-error', {
+            message: 'No hay conexión a internet',
+            error:
+              'No se puede lanzar Minecraft sin conexión porque faltan archivos. Por favor, conéctate a internet primero.'
+          })
+          return
+        }
+      }
+
       const javaPath = (await getJava(21)) as string
       console.log('Java encontrado en:', javaPath)
       const userAccount = store.get('minecraft.userAccount') as {
         type: string
         username: string
       }
-      const premiumSession = store.get('minecraft.auth') as any // Aquí se guarda el token de msmc
+      const premiumSession = store.get('minecraft.auth') as any
       const selectedVersion = store.get('minecraft.settings.selectedVersion') as {
         type: string
         id: string
@@ -1042,7 +1082,9 @@ app.whenReady().then(() => {
         memory: {
           min: memoryAllocation[0],
           max: memoryAllocation[1]
-        }
+        },
+        // Agregar configuración offline si no hay internet
+        offline: !isOnline
       }
 
       // Opcionales, si tienen valor
@@ -1262,8 +1304,8 @@ app.whenReady().then(() => {
         root: minecraftDir,
         javaPath: javaPath,
         version: {
-          number: '1.21.4',
-          custom: 'secrecy',
+          number: '1.21.10',
+          custom: '1.21.10',
           type: 'Secrecy'
         },
         memory: {
@@ -1271,9 +1313,6 @@ app.whenReady().then(() => {
           max: memoryAllocation[1]
         }
       }
-
-      // Resto de opciones (código existente)
-      // ...
 
       function launchMinecraft() {
         launcher.launch(opts)
@@ -1404,21 +1443,13 @@ app.whenReady().then(() => {
     try {
       console.log('Fetching Minecraft version data...')
 
-      // 1. Obtener manifest oficial
-      const manifestResponse = await fetch(
-        'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
-      )
-      if (!manifestResponse.ok) throw new Error('Failed to fetch Minecraft manifest')
-      const manifest = (await manifestResponse.json()) as MojangManifest
-
-      // 2. Obtener versiones instaladas
       const versionsDir = path.join(store.get('paths.minecraft') as string, '/versions')
-
       console.log(versionsDir)
 
       const installedVersions: string[] = []
       const customVersions: VersionInfo[] = []
 
+      // 1. SIEMPRE leer versiones instaladas (funciona sin internet)
       if (fs.existsSync(versionsDir)) {
         const versionFolders = fs.readdirSync(versionsDir)
 
@@ -1438,15 +1469,9 @@ app.whenReady().then(() => {
                   type: 'custom',
                   inheritsFrom: versionData.inheritsFrom
                 })
-              } else if (manifest.versions.some((v) => v.id === folder)) {
+              } else {
                 // Es una versión oficial instalada
                 installedVersions.push(folder)
-              } else {
-                // Podría ser una versión personalizada sin inheritsFrom
-                customVersions.push({
-                  id: folder,
-                  type: 'custom'
-                })
               }
             } catch (e) {
               console.error(`Error reading version ${folder}:`, e)
@@ -1455,59 +1480,92 @@ app.whenReady().then(() => {
         }
       }
 
+      // 2. Intentar obtener manifest oficial (PUEDE FALLAR sin internet)
+      let manifest: MojangManifest | null = null
+      let isOnline = true
+
+      try {
+        const manifestResponse = await fetch(
+          'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json',
+          { signal: AbortSignal.timeout(5000) } // 5 segundos timeout
+        )
+        if (manifestResponse.ok) {
+          manifest = (await manifestResponse.json()) as MojangManifest
+        }
+      } catch (error) {
+        console.warn('No se pudo obtener el manifest de Mojang (modo offline):', error)
+        isOnline = false
+      }
+
       // 3. Procesar y combinar los datos
       const result: VersionManifest = {
         versions: []
       }
 
-      // Procesar versiones oficiales
-      const officialVersions: VersionInfo[] = manifest.versions.map((v) => ({
-        id: v.id,
-        type: v.type === 'release' || v.type === 'snapshot' ? v.type : 'release',
-        releaseTime: v.releaseTime
-          ? new Date(v.releaseTime).toLocaleDateString('es-ES')
-          : undefined,
-        isLatestRelease: v.id === manifest.latest.release,
-        isLatestSnapshot: v.id === manifest.latest.snapshot,
-        isInstalled: installedVersions.includes(v.id)
-      }))
+      if (manifest && isOnline) {
+        // MODO ONLINE: Usar manifest oficial
+        const officialVersions: VersionInfo[] = manifest.versions.map((v) => ({
+          id: v.id,
+          type: v.type === 'release' || v.type === 'snapshot' ? v.type : 'release',
+          releaseTime: v.releaseTime
+            ? new Date(v.releaseTime).toLocaleDateString('es-ES')
+            : undefined,
+          isLatestRelease: v.id === manifest!.latest.release,
+          isLatestSnapshot: v.id === manifest!.latest.snapshot,
+          isInstalled: installedVersions.includes(v.id)
+        }))
 
-      // Ordenar versiones oficiales (más recientes primero)
-      officialVersions.sort(
-        (a, b) => new Date(b.releaseTime || 0).getTime() - new Date(a.releaseTime || 0).getTime()
-      )
+        officialVersions.sort(
+          (a, b) => new Date(b.releaseTime || 0).getTime() - new Date(a.releaseTime || 0).getTime()
+        )
 
-      // Añadir versiones oficiales al resultado
-      result.versions.push(...officialVersions)
+        result.versions.push(...officialVersions)
+      } else {
+        // MODO OFFLINE: Usar solo versiones instaladas
+        console.log('Modo offline: mostrando solo versiones instaladas')
 
-      // Procesar versiones personalizadas
+        const localVersions: VersionInfo[] = installedVersions.map((id) => ({
+          id,
+          type: 'release' as const,
+          isInstalled: true
+        }))
+
+        result.versions.push(...localVersions)
+      }
+
+      // 4. Procesar versiones personalizadas (SIEMPRE)
       customVersions.forEach((custom) => {
-        // Buscar la versión padre en la lista oficial
         const parentIndex = custom.inheritsFrom
           ? result.versions.findIndex((v) => v.id === custom.inheritsFrom)
           : -1
 
         if (parentIndex >= 0) {
-          // Insertar después de la versión padre
           result.versions.splice(parentIndex + 1, 0, {
             id: custom.id,
             type: 'custom',
-            inheritsFrom: custom.inheritsFrom
+            inheritsFrom: custom.inheritsFrom,
+            isInstalled: true
           })
         } else {
-          // Añadir al final si no encontramos padre
           result.versions.push({
             id: custom.id,
             type: 'custom',
-            inheritsFrom: custom.inheritsFrom
+            inheritsFrom: custom.inheritsFrom,
+            isInstalled: true
           })
         }
       })
 
+      // 5. Si no hay versiones, mostrar mensaje apropiado
+      if (result.versions.length === 0) {
+        console.warn('No hay versiones de Minecraft disponibles')
+      }
+
       return result
     } catch (err) {
       console.error('Error loading version data:', err)
-      throw err
+      // En caso de error total, devolver lista vacía en lugar de lanzar
+      return { versions: [] }
     }
   })
 
