@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import {
@@ -46,7 +46,7 @@ import {
 } from 'lucide-react'
 import { DualRangeSlider } from '@/components/ui/range-slider'
 import SkinViewerComponent from '@/components/minecraft-skin-viewer'
-import minevideo from '@renderer/assets/minecraftvideo.mp4'
+import { use } from 'react'
 ;(function () {
   var f, g
   f = (function () {
@@ -506,24 +506,6 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
 
   // Añadir estado para el nombre de usuario en el modal de cuenta
   const [accountUsername, setAccountUsername] = useState('')
-  const [showDDriveModal, setShowDDriveModal] = useState(false)
-  const [dDrivePath, setDDrivePath] = useState('')
-
-  useEffect(() => {
-    window.electron.ipcRenderer.on('ask-d-drive', (_event, path) => {
-      setDDrivePath(path)
-      setShowDDriveModal(true)
-    })
-    return () => {
-      window.electron.ipcRenderer.removeAllListeners('ask-d-drive')
-    }
-  }, [])
-
-  const handleDDriveChoice = async (accept) => {
-    await window.electron.ipcRenderer.invoke('set-d-drive-storage', accept, dDrivePath)
-    setShowDDriveModal(false)
-    window.location.reload()
-  }
 
   return (
     <>
@@ -576,7 +558,10 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
           muted
           playsInline
         >
-          <source src={minevideo} type="video/webm" />
+          <source
+            src="https://www.minecraft.net/content/dam/minecraftnet/games/minecraft/videos/Homepage_Gameplay-Trailer_MC-OV_1080x720.webm"
+            type="video/webm"
+          />
         </video>
 
         {/* Overlay para mejorar legibilidad */}
@@ -950,13 +935,382 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
               </TabsList>
 
               <TabsContent value="general" className="space-y-6">
-                {/* ...General tab content... */}
-                {/* (unchanged, see above) */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Cuenta de usuario</CardTitle>
+                    <CardDescription>Gestiona tu cuenta de Minecraft</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {userAccount && (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center ${userAccount.type === 'premium' ? 'bg-blue-500' : 'bg-orange-500'}`}
+                          >
+                            {userAccount.type === 'premium' ? (
+                              <Star className="h-5 w-5 text-white" />
+                            ) : (
+                              <User className="h-5 w-5 text-white" />
+                            )}
+                          </div>
+                          <div>
+                            <h3 className="font-medium">{userAccount.username}</h3>
+                            <p className="text-xs text-muted-foreground">
+                              {userAccount.type === 'premium'
+                                ? 'Cuenta Premium'
+                                : 'Cuenta No Premium'}
+                              {userAccount.email && ` - ${userAccount.email}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 mt-4">
+                          <Button
+                            variant="outline"
+                            className="justify-start"
+                            onClick={() => setShowAccountModal(true)}
+                          >
+                            <Settings className="mr-2 h-4 w-4" />
+                            Cambiar configuración de cuenta
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Configuración de Java</CardTitle>
+                    <CardDescription>
+                      Configura la versión de Java y la asignación de memoria
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="java-path">Ruta de Java</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="java-path"
+                          value={customJavaPath}
+                          onChange={(e) => setCustomJavaPath(e.target.value)}
+                          className="flex-1"
+                          disabled
+                        />
+                        <Button variant="outline" disabled>
+                          Examinar
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <Label htmlFor="memory-slider">Asignación de memoria</Label>
+                        <span className="text-sm">
+                          {(memoryAllocation[0] / 1024).toFixed(1)} GB -{' '}
+                          {(memoryAllocation[1] / 1024).toFixed(1)} GB
+                        </span>
+                      </div>
+                      <DualRangeSlider
+                        id="memory-slider"
+                        min={1024}
+                        max={16384}
+                        step={1024}
+                        value={memoryAllocation}
+                        onValueChange={setMemoryAllocation}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Configuración del launcher</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="close-launcher">Ocultar launcher al iniciar el juego</Label>
+                      <Switch
+                        id="close-launcher"
+                        checked={closeLauncher}
+                        onCheckedChange={setCloseLauncher}
+                      />
+                    </div>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="auto-update">Actualizar automáticamente</Label>
+                      <Switch
+                        id="auto-update"
+                        checked={autoUpdate}
+                        onCheckedChange={setAutoUpdate}
+                        disabled
+                      />
+                    </div>
+                    <Separator />
+                    {/* Modificar la sección de configuración para sincronizar con el nuevo sistema de filtros */}
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="snapshot">Mostrar snapshots en todos los filtros</Label>
+                      <Switch
+                        id="snapshot"
+                        checked={showSnapshots}
+                        onCheckedChange={(checked) => setShowSnapshots(checked)}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Resolución de pantalla</CardTitle>
+                    <CardDescription>Configura el tamaño de la ventana del juego</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="window-width">Ancho</Label>
+                        <Input
+                          id="window-width"
+                          type="number"
+                          placeholder="854"
+                          value={windowWidth}
+                          onChange={(e) => setWindowWidth(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="window-height">Alto</Label>
+                        <Input
+                          id="window-height"
+                          type="number"
+                          placeholder="480"
+                          value={windowHeight}
+                          onChange={(e) => setWindowHeight(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-2">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="fullscreen">Pantalla completa</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Iniciar el juego en modo pantalla completa
+                        </p>
+                      </div>
+                      <Switch
+                        id="fullscreen"
+                        checked={fullscreen}
+                        onCheckedChange={setFullscreen}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Carpetas del juego</CardTitle>
+                    <CardDescription>
+                      Configura las ubicaciones de los archivos del juego
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="game-directory">Directorio del juego</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="game-directory"
+                          value={gameDirectory}
+                          onChange={handleDirectoryChange}
+                          className="flex-1"
+                          disabled={directoryType === 'default' || directoryType === 'secrecy'}
+                        />
+                        <Button variant="outline">Examinar</Button>
+                      </div>
+
+                      <div className="flex flex-col gap-2 mt-3">
+                        <div className="text-sm font-medium mb-1">Opciones predeterminadas:</div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant={directoryType === 'default' ? 'default' : 'outline'}
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => handleDirectoryTypeChange('default')}
+                          >
+                            <Folder className="mr-2 h-4 w-4" />
+                            Carpeta Minecraft oficial
+                          </Button>
+                          <Button
+                            variant={directoryType === 'secrecy' ? 'default' : 'outline'}
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => handleDirectoryTypeChange('secrecy')}
+                          >
+                            <Folder className="mr-2 h-4 w-4" />
+                            Carpeta Secrecy Launcher
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Selecciona una opción predeterminada o introduce una ruta personalizada.
+                          {directoryType !== 'custom' &&
+                            ' El campo de ruta se ha bloqueado para evitar modificaciones accidentales.'}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               <TabsContent value="advanced" className="space-y-6">
-                {/* ...Advanced tab content... */}
-                {/* (unchanged, see above) */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Argumentos personalizados</CardTitle>
+                    <CardDescription>
+                      Configura argumentos adicionales para Java y Minecraft
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="custom-java-args">Argumentos de Java</Label>
+                      <Input
+                        id="custom-java-args"
+                        placeholder="-XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20"
+                        value={customJavaArgs}
+                        onChange={(e) => setCustomJavaArgs(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Argumentos adicionales para la máquina virtual de Java
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="custom-mc-args">Argumentos de Minecraft</Label>
+                      <Input
+                        id="custom-mc-args"
+                        placeholder="--quickPlayMultiplayer mc.example.com:25565"
+                        value={customMcArgs}
+                        onChange={(e) => setCustomMcArgs(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Argumentos adicionales para el cliente de Minecraft
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Configuración de red</CardTitle>
+                    <CardDescription>Configura opciones de proxy y conexión</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="use-proxy">Usar proxy</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Conectar a través de un servidor proxy
+                        </p>
+                      </div>
+                      <Switch id="use-proxy" checked={useProxy} onCheckedChange={setUseProxy} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="proxy-host">Host del proxy</Label>
+                        <Input
+                          id="proxy-host"
+                          placeholder="proxy.example.com"
+                          value={proxyHost}
+                          onChange={(e) => setProxyHost(e.target.value)}
+                          disabled={!useProxy}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="proxy-port">Puerto</Label>
+                        <Input
+                          id="proxy-port"
+                          placeholder="8080"
+                          value={proxyPort}
+                          onChange={(e) => setProxyPort(e.target.value)}
+                          disabled={!useProxy}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mt-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="proxy-username">Usuario</Label>
+                        <Input
+                          id="proxy-username"
+                          placeholder="usuario"
+                          value={proxyUsername}
+                          onChange={(e) => setProxyUsername(e.target.value)}
+                          disabled={!useProxy}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="proxy-password">Contraseña</Label>
+                        <Input
+                          id="proxy-password"
+                          type="password"
+                          placeholder="••••••••"
+                          value={proxyPassword}
+                          onChange={(e) => setProxyPassword(e.target.value)}
+                          disabled={!useProxy}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 mt-4">
+                      <Label htmlFor="timeout">Tiempo de espera (ms)</Label>
+                      <Input
+                        id="timeout"
+                        type="number"
+                        placeholder="10000"
+                        value={minecraftTimeout}
+                        onChange={(e) => setMinecraftTimeout(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Tiempo máximo de espera para las solicitudes de descarga
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Inicio rápido (QuickPlay)</CardTitle>
+                    <CardDescription>
+                      Configura opciones para iniciar directamente en un mundo o servidor
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="quickplay-type">Tipo</Label>
+                      <Select value={quickPlayType} onValueChange={setQuickPlayType}>
+                        <SelectTrigger id="quickplay-type">
+                          <SelectValue placeholder="Seleccionar tipo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Ninguno</SelectItem>
+                          <SelectItem value="singleplayer">Un jugador</SelectItem>
+                          <SelectItem value="multiplayer">Multijugador</SelectItem>
+                          <SelectItem value="realms">Realms</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="quickplay-identifier">Identificador</Label>
+                      <Input
+                        id="quickplay-identifier"
+                        placeholder="Nombre del mundo o dirección del servidor"
+                        value={quickPlayIdentifier}
+                        onChange={(e) => setQuickPlayIdentifier(e.target.value)}
+                        disabled={quickPlayType === 'none'}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Nombre de la carpeta del mundo, dirección del servidor o ID del realm
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
             </Tabs>
           </TabsContent>
