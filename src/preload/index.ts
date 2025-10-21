@@ -5,7 +5,33 @@ import path from 'path'
 import vdf from 'vdf-parser'
 import Store from 'electron-store'
 
-const store = new Store()
+// ====== LÓGICA DE DETECCIÓN DE RUTA PERSONALIZADA (igual que en index) ======
+const customPath = 'D:\\SecrecyLauncher'
+const customConfigPath = path.join(customPath, 'config.json')
+
+let store: Store
+let customDataPath: string | null = null
+
+if (fs.existsSync(customConfigPath)) {
+  // Usar la ruta personalizada
+  store = new Store({
+    cwd: customPath
+  })
+  customDataPath = customPath
+  console.log(`[Preload] Using custom data path: ${customPath}`)
+} else {
+  // Usar la ruta por defecto
+  store = new Store()
+  console.log(`[Preload] Using default data path (userData)`)
+}
+
+// Función helper para obtener la ruta de datos (igual que en index)
+function getDataPath(): string {
+  // En el preload no tenemos acceso directo a app.getPath('userData')
+  // pero el Store ya está configurado con la ruta correcta
+  return customDataPath || store.path.replace(/[/\\]config\.json$/, '')
+}
+// ============================================================================
 
 // Custom APIs for renderer
 const api = {
@@ -105,10 +131,12 @@ if (process.contextIsolated) {
         return { ...user, avatar }
       }
     })
+
     contextBridge.exposeInMainWorld('storage', {
       get: (key: string) => store.get(key),
-      set: (key: string, value: unknown) => store.set(key, value)
-      // Puedes añadir más métodos si los necesitas (delete, has, etc.)
+      set: (key: string, value: unknown) => store.set(key, value),
+      // Método adicional para obtener la ruta de datos actual
+      getDataPath: () => getDataPath()
     })
   } catch (error) {
     console.error('ContextBridge Error:', error)

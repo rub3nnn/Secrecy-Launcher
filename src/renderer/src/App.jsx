@@ -5,14 +5,16 @@ import { UpdateNotification } from '@/components/update'
 import { AppErrorDialog } from '@/components/app-error-dialog'
 import { MinecraftLauncher } from '@/components/minecraft-launcher'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { PinAccess } from '@/components/pass-game-library'
 function App() {
   const [gameData, setGameData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showErrorDialog, setShowErrorDialog] = useState(false)
   const [isDownloadsSidebarOpen, setIsDownloadsSidebarOpen] = useState(false)
-  const [currentSection, setCurrentSection] = useState('library')
+  const [currentSection, setCurrentSection] = useState('minecraft')
   const [minecraftStatus, setMinecraftStatus] = useState({})
+  const [libraryAccess, setLibraryAccess] = useState(false)
   const [currentError, setCurrentError] = useState({
     title: '',
     description: '',
@@ -272,6 +274,10 @@ function App() {
 
   const downloads = gameData.filter((game) => game.download)
 
+  const onSuccessLibraryAccess = useCallback(() => {
+    setLibraryAccess(true)
+  }, [])
+
   return (
     <div className="flex h-screen bg-background">
       <SidebarNav
@@ -287,7 +293,7 @@ function App() {
       />
       <main className="flex-1 overflow-auto">
         <ScrollArea className="h-full" setScrollPosition={setScrollPosition}>
-          {currentSection === 'library' && (
+          {currentSection === 'library' && libraryAccess ? (
             <GameLibrary
               gameData={memoizedGameData}
               setGameData={setGameData}
@@ -298,6 +304,9 @@ function App() {
               isDownloadsSidebarOpen={isDownloadsSidebarOpen}
               setIsDownloadsSidebarOpen={setIsDownloadsSidebarOpen}
             />
+          ) : (
+            currentSection === 'library' &&
+            !libraryAccess && <PinAccess onSuccess={onSuccessLibraryAccess} />
           )}
           {currentSection === 'minecraft' && (
             <MinecraftLauncher minecraftStatus={minecraftStatus} scrollPosition={scrollPosition} />

@@ -16,7 +16,31 @@ log.transports.file.level = 'info'
 log.transports.file.maxSize = 5 * 1024 * 1024 // 5MB
 log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}'
 
-const store = new Store()
+const customPath = 'D:\\SecrecyLauncher'
+const customConfigPath = path.join(customPath, 'config.json')
+
+// Detectar si existe el config.json en la ruta personalizada
+let store: Store
+let customDataPath: string | null = null
+
+if (fs.existsSync(customConfigPath)) {
+  // Usar la ruta personalizada
+  store = new Store({
+    cwd: customPath
+  })
+  customDataPath = customPath
+  log.info(`Using custom data path: ${customPath}`)
+} else {
+  // Usar la ruta por defecto
+  store = new Store()
+  log.info(`Using default data path: ${app.getPath('userData')}`)
+}
+
+// Función helper para obtener la ruta de datos
+function getDataPath(): string {
+  return customDataPath || app.getPath('userData')
+}
+
 const activeDownloads = new Map<number, DownloaderHelper>()
 
 let mainWindow: BrowserWindow | null = null
@@ -235,11 +259,7 @@ app.whenReady().then(() => {
       console.log(update)
       log.info('Installing game:', gameData.title)
 
-      const downloadPath = path.join(
-        app.getPath('userData'),
-        'game-downloads',
-        gameData.id.toString()
-      )
+      const downloadPath = path.join(getDataPath(), 'game-downloads', gameData.id.toString())
       const extractPath = path.join(
         downloadPath,
         'extracted',
@@ -763,7 +783,7 @@ app.whenReady().then(() => {
   ipcMain.on('install-steam', async (event) => {
     log.info('Starting Steam installation')
 
-    const downloadPath = path.join(app.getPath('userData'), 'steam-install')
+    const downloadPath = path.join(getDataPath(), 'steam-install')
     const steamUrl = 'https://cdn.fastly.steamstatic.com/client/installer/SteamSetup.exe'
 
     ensureDirectory(downloadPath)
@@ -929,7 +949,7 @@ app.whenReady().then(() => {
       return store.get(`javaExePath.${javaVer}`)
     } else {
       const [releaseInfo] = await getTemurin8ReleaseInfo(javaVer)
-      const extractPath = path.join(app.getPath('userData'), 'java')
+      const extractPath = path.join(getDataPath(), 'java')
 
       return new Promise((resolve, reject) => {
         const worker = new Worker(path.join(__dirname, '../../resources/javaWorker.js'), {
@@ -1155,7 +1175,7 @@ app.whenReady().then(() => {
             stage: 'installing-minecraft',
             progress: (e.task / e.total) * 100,
             message:
-              'Descargando archivos de Minecraft... ' + ((e.task / e.total) * 100).toFixed(0) + '%'
+              'Cargando archivos de Minecraft... ' + ((e.task / e.total) * 100).toFixed(0) + '%'
           })
         })
         launcher.on('arguments', () => {
@@ -1186,7 +1206,7 @@ app.whenReady().then(() => {
 
   ipcMain.on('launch-server', async () => {
     const serverDataUrl = 'https://secrecyfiles.github.io/fileshoster/secrecyserver/data.json'
-    const minecraftDir = path.join(currentPaths.userData, 'secrecy-server')
+    const minecraftDir = path.join(getDataPath(), 'secrecy-server')
 
     // Asegurarse de que el directorio existe
     ensureDirectory(minecraftDir)
@@ -1224,7 +1244,7 @@ app.whenReady().then(() => {
           mainWindow?.webContents.send('minecraft-status', {
             stage: 'downloading-server',
             progress: progress,
-            message: `Descargando servidor... ${progress}%`
+            message: `Descargando paquetes del servidor... ${progress}%`
           })
         })
 
@@ -1233,7 +1253,7 @@ app.whenReady().then(() => {
             mainWindow?.webContents.send('minecraft-status', {
               stage: 'extracting-server',
               progress: 0,
-              message: 'Extrayendo archivos del servidor...'
+              message: 'Extrayendo archivos...'
             })
             resolve(true)
           })
@@ -1323,7 +1343,7 @@ app.whenReady().then(() => {
             stage: 'installing-minecraft',
             progress: (e.task / e.total) * 100,
             message:
-              'Descargando archivos de Minecraft... ' + ((e.task / e.total) * 100).toFixed(0) + '%'
+              'Cargando archivos de Minecraft... ' + ((e.task / e.total) * 100).toFixed(0) + '%'
           })
         })
         launcher.on('arguments', () => {
@@ -1358,21 +1378,6 @@ app.whenReady().then(() => {
       const response = await fetch(
         'https://secrecyfiles.github.io/fileshoster/secrecylauncher/data.json'
       )
-      if (!response.ok) {
-        throw new Error('No se pudo cargar los datos de los juegos')
-      }
-      const data = await response.json()
-      return data
-    } catch (err) {
-      console.error('Error al cargar los datos:', err)
-      throw err
-    }
-  })
-
-  ipcMain.handle('fetchServerInfo', async () => {
-    log.info('Fetching server info...')
-    try {
-      const response = await fetch('https://mcapi.us/server/status?ip=rub3n.es')
       if (!response.ok) {
         throw new Error('No se pudo cargar los datos de los juegos')
       }
@@ -1497,6 +1502,13 @@ app.whenReady().then(() => {
         isOnline = false
       }
 
+      // VALIDACIÓN: Si no hay versiones instaladas Y no hay conexión, lanzar error
+      if (installedVersions.length === 0 && customVersions.length === 0 && !isOnline) {
+        throw new Error(
+          'No se pueden obtener versiones de Minecraft: no hay versiones instaladas y no hay conexión a internet'
+        )
+      }
+
       // 3. Procesar y combinar los datos
       const result: VersionManifest = {
         versions: []
@@ -1556,17 +1568,66 @@ app.whenReady().then(() => {
         }
       })
 
-      // 5. Si no hay versiones, mostrar mensaje apropiado
-      if (result.versions.length === 0) {
-        console.warn('No hay versiones de Minecraft disponibles')
-      }
-
       return result
     } catch (err) {
       console.error('Error loading version data:', err)
-      // En caso de error total, devolver lista vacía en lugar de lanzar
-      return { versions: [] }
+      throw err // Propagar el error en lugar de devolver lista vacía
     }
+  })
+
+  ipcMain.on('open-external', (_, url: string) => {
+    if (url && typeof url === 'string') {
+      shell.openExternal(url)
+    }
+  })
+
+  // Handler para verificar si existe la unidad D:
+  ipcMain.handle('check-d-drive', async () => {
+    try {
+      const dDrivePath = 'D:\\'
+      const exists = fs.existsSync(dDrivePath)
+      log.info(`D: drive check: ${exists}`)
+      return { exists }
+    } catch (error) {
+      log.error('Error checking D: drive:', error)
+      return { exists: false }
+    }
+  })
+
+  // Handler para configurar la ruta personalizada
+  ipcMain.handle('setup-custom-path', async () => {
+    try {
+      const customPath = 'D:\\SecrecyLauncher'
+      const configPath = path.join(customPath, 'config.json')
+
+      // Crear el directorio si no existe
+      if (!fs.existsSync(customPath)) {
+        fs.mkdirSync(customPath, { recursive: true })
+        log.info(`Created custom path: ${customPath}`)
+      }
+
+      // Crear el config.json con la flag
+      const configData = {
+        advertseen: {
+          relocatedata: true
+        }
+      }
+
+      fs.writeFileSync(configPath, JSON.stringify(configData, null, 2), 'utf-8')
+      log.info(`Created config.json at: ${configPath}`)
+
+      return { success: true, path: customPath }
+    } catch (error: any) {
+      log.error('Error setting up custom path:', error)
+      throw new Error(`Failed to setup custom path: ${error.message}`)
+    }
+  })
+
+  // Handler para reiniciar la aplicación
+  ipcMain.on('restart-app', () => {
+    log.info('Restarting application...')
+    app.relaunch()
+    app.exit(0)
   })
 
   createWindow()
