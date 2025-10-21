@@ -190,6 +190,18 @@ async function checkInternetConnection(): Promise<boolean> {
 }
 
 app.whenReady().then(() => {
+  // Detectar unidad D://
+  const dDrivePath = 'D:\\'
+  const secrecyLauncherPath = path.join(dDrivePath, 'SecrecyLauncher')
+  let askedForDDrive = false
+
+  if (fs.existsSync(dDrivePath) && fs.lstatSync(dDrivePath).isDirectory()) {
+    // Solo preguntar si no se ha preguntado antes
+    if (!store.get('paths.useDDrive')) {
+      askedForDDrive = true
+    }
+  }
+
   electronApp.setAppUserModelId('Secrecy Launcher')
 
   // Configurar el auto-updater
@@ -236,7 +248,7 @@ app.whenReady().then(() => {
       log.info('Installing game:', gameData.title)
 
       const downloadPath = path.join(
-        app.getPath('userData'),
+        store.get('paths.userData') as string,
         'game-downloads',
         gameData.id.toString()
       )
@@ -1564,12 +1576,20 @@ app.whenReady().then(() => {
       return result
     } catch (err) {
       console.error('Error loading version data:', err)
-      // En caso de error total, devolver lista vacía en lugar de lanzar
-      return { versions: [] }
+      throw err
     }
   })
 
   createWindow()
+
+  // Mostrar modal en renderer si corresponde
+  if (askedForDDrive && mainWindow) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      if (mainWindow) {
+        mainWindow.webContents.send('ask-d-drive', secrecyLauncherPath)
+      }
+    })
+  }
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -1580,4 +1600,21 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+ipcMain.handle('set-d-drive-storage', (_event, useDDrive: boolean, customPath?: string) => {
+  if (useDDrive && customPath) {
+    store.set('paths.useDDrive', true)
+    store.set('paths.userData', customPath)
+    store.set('paths.minecraft', path.join(customPath, '.minecraft'))
+    // Crea la carpeta si no existe
+    if (!fs.existsSync(customPath)) {
+      fs.mkdirSync(customPath, { recursive: true })
+    }
+  } else {
+    store.set('paths.useDDrive', false)
+    store.set('paths.userData', app.getPath('userData'))
+    store.set('paths.minecraft', path.join(app.getPath('userData'), '.minecraft'))
+  }
+  return { success: true }
 })
