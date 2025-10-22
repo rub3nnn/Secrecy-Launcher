@@ -1,7 +1,7 @@
 {
   "name": "secrecy-launcher",
   "productName": "Secrecy Launcher",
-  "version": "3.1.0",
+  "version": "3.4.0",
   "description": "Secrecy Launcher",
   "main": "./out/main/index.js",
   "author": "Secrecy",
@@ -20,21 +20,6 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux"
-  },
-  "build": {
-    "appId": "com.secrecy.launcher",
-    "publish": {
-      "provider": "github",
-      "owner": "rub3nnn",
-      "repo": "Secrecy-Launcher",
-      "private": true
-    },
-    "extraResources": [
-      {
-        "from": "resources/icon.png",
-        "to": "icon.png"
-      }
-    ]
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",

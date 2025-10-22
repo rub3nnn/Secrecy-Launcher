@@ -1,7 +1,8 @@
 appId: com.secrecy.launcher
-productName: secrecy-launcher
+productName: Secrecy Launcher
 directories:
   buildResources: build
+
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -9,28 +10,65 @@ files:
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+
 asarUnpack:
   - resources/**
+
+extraResources:
+  - from: resources/icon.png
+    to: icon.png
+
+npmRebuild: false
+
+# ===========================
+# WINDOWS CONFIG
+# ===========================
 win:
   target:
     - nsis
     - portable
-  executableName: secrecy-launcher
+  executableName: SecrecyLauncher
+  artifactName: ${name}-${version}.${ext}
+  publish:
+    provider: github
+    owner: rub3nnn
+    repo: Secrecy-Launcher
+    private: true
+
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+
+# ===========================
+# MAC CONFIG
+# ===========================
 mac:
+  category: public.app-category.utilities
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    NSCameraUsageDescription: Application requests access to the device's camera.
+    NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
+  publish:
+    provider: github
+    owner: rub3nnn
+    repo: Secrecy-Launcher
+    private: true
+
 dmg:
   artifactName: ${name}-${version}.${ext}
+
+# ===========================
+# LINUX CONFIG
+# ===========================
 linux:
   target:
     - AppImage
@@ -38,9 +76,11 @@ linux:
     - deb
   maintainer: electronjs.org
   category: Utility
+  publish:
+    provider: github
+    owner: rub3nnn
+    repo: Secrecy-Launcher
+    private: true
+
 appImage:
   artifactName: ${name}-${version}.${ext}
-npmRebuild: false
-publish:
-  provider: generic
-  url: https://rub3n.es

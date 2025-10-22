@@ -10,7 +10,6 @@ import { Worker } from 'worker_threads'
 import { Client, Authenticator } from 'minecraft-launcher-core'
 import os from 'os'
 import { Auth } from 'msmc'
-import { exec } from 'child_process'
 
 // Configuración del logger
 log.transports.file.level = 'info'
@@ -89,141 +88,6 @@ function createWindow(): void {
   }
 }
 
-function createUpdateBatch(updaterPath: string): void {
-  try {
-    const currentExePath = process.execPath
-    const newExePath = path.join(updaterPath, 'SecrecyLauncher-new.exe')
-    const batchPath = path.join(updaterPath, 'update.bat')
-
-    // Script batch para actualizar
-    const batchScript = `@echo off
-chcp 65001 >nul
-title Actualizando Secrecy Launcher
-echo ================================================
-echo   Actualizando Secrecy Launcher
-echo ================================================
-echo.
-echo Esperando a que se cierre la aplicación...
-echo.
-
-:wait
-tasklist /FI "IMAGENAME eq SecrecyLauncher.exe" 2>NUL | find /I /N "SecrecyLauncher.exe">NUL
-if "%ERRORLEVEL%"=="0" (
-    timeout /t 1 /nobreak >nul
-    goto wait
-)
-
-echo Aplicación cerrada.
-echo.
-echo Actualizando archivos...
-timeout /t 2 /nobreak >nul
-
-move /Y "${newExePath.replace(/\\/g, '\\\\')}" "${currentExePath.replace(/\\/g, '\\\\')}"
-
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo ================================================
-    echo   ERROR: No se pudo actualizar la aplicación
-    echo ================================================
-    echo.
-    pause
-    exit /b 1
-)
-
-echo.
-echo ================================================
-echo   Actualización completada con éxito
-echo ================================================
-echo.
-echo Iniciando Secrecy Launcher...
-timeout /t 2 /nobreak >nul
-
-start "" "${currentExePath.replace(/\\/g, '\\\\')}"
-
-rem Limpiar archivos temporales
-timeout /t 2 /nobreak >nul
-rd /s /q "${updaterPath.replace(/\\/g, '\\\\')}"
-
-rem Autodestruir el script
-(goto) 2>nul & del "%~f0"
-`
-
-    fs.writeFileSync(batchPath, batchScript, 'utf-8')
-    log.info('Update batch file created:', batchPath)
-  } catch (error) {
-    log.error('Error creating update batch:', error)
-    throw error
-  }
-}
-
-function executePortableUpdate(): void {
-  try {
-    const updaterPath = path.join(getDataPath(), 'updater')
-    const batchPath = path.join(updaterPath, 'update.bat')
-
-    if (!fs.existsSync(batchPath)) {
-      throw new Error('Update batch file not found')
-    }
-
-    log.info('Executing portable update...')
-
-    // Ejecutar el batch en modo oculto
-    exec(`start /min "" "${batchPath}"`, (error) => {
-      if (error) {
-        log.error('Error executing update batch:', error)
-        return
-      }
-
-      // Cerrar la aplicación después de iniciar el updater
-      setTimeout(() => {
-        app.quit()
-      }, 500)
-    })
-  } catch (error) {
-    log.error('Error executing portable update:', error)
-    throw error
-  }
-}
-
-function preparePortableUpdate(updateInfo: any): void {
-  try {
-    const updaterPath = path.join(getDataPath(), 'updater')
-    ensureDirectory(updaterPath)
-
-    // El archivo descargado por electron-updater está en temp
-    // Lo movemos a nuestra carpeta updater
-    const downloadedFile = path.join(
-      app.getPath('temp'),
-      'pending',
-      updateInfo.path || 'update.exe'
-    )
-    const newExePath = path.join(updaterPath, 'SecrecyLauncher-new.exe')
-
-    // Copiar el archivo descargado a nuestra carpeta
-    if (fs.existsSync(downloadedFile)) {
-      fs.copyFileSync(downloadedFile, newExePath)
-      log.info('Portable update file copied to:', newExePath)
-    } else {
-      // Si no existe en esa ruta, intentar encontrarlo
-      const tempDir = path.join(app.getPath('temp'), 'pending')
-      if (fs.existsSync(tempDir)) {
-        const files = fs.readdirSync(tempDir)
-        const exeFile = files.find((f) => f.endsWith('.exe'))
-        if (exeFile) {
-          fs.copyFileSync(path.join(tempDir, exeFile), newExePath)
-          log.info('Portable update file found and copied:', exeFile)
-        }
-      }
-    }
-
-    createUpdateBatch(updaterPath)
-    log.info('Portable update prepared successfully')
-  } catch (error) {
-    log.error('Error preparing portable update:', error)
-    throw error
-  }
-}
-
 function setupAutoUpdater(): void {
   const token = getGitHubToken()
 
@@ -236,7 +100,8 @@ function setupAutoUpdater(): void {
     autoUpdater.forceDevUpdateConfig = true
   }
 
-  autoUpdater.autoDownload = true
+  // Para portable NO auto-descargar, para instalado SÍ
+  autoUpdater.autoDownload = !isPortable
 
   if (token) {
     autoUpdater.setFeedURL({
@@ -257,7 +122,13 @@ function setupAutoUpdater(): void {
 
   autoUpdater.on('update-available', (info) => {
     log.info('Update available:', info)
-    mainWindow?.webContents.send('update-available', { ...info, isPortable })
+
+    // Si es portable, iniciar descarga manual
+    if (isPortable) {
+      downloadPortableUpdate(info)
+    }
+
+    mainWindow?.webContents.send('update-available', info)
   })
 
   autoUpdater.on('update-not-available', (info) => {
@@ -265,16 +136,14 @@ function setupAutoUpdater(): void {
     mainWindow?.webContents.send('update-not-available', info)
   })
 
-  // Para portable, escuchar cuando se descargue
+  autoUpdater.on('download-progress', (progressInfo) => {
+    log.info('Download progress:', progressInfo)
+    mainWindow?.webContents.send('update-download-progress', progressInfo)
+  })
+
   autoUpdater.on('update-downloaded', (info) => {
     log.info('Update downloaded:', info)
-
-    if (isPortable) {
-      // Crear el batch y preparar actualización
-      preparePortableUpdate(info)
-    }
-
-    mainWindow?.webContents.send('update-downloaded', { ...info, isPortable })
+    mainWindow?.webContents.send('update-downloaded', info)
   })
 
   autoUpdater.on('error', (error) => {
@@ -286,6 +155,191 @@ function setupAutoUpdater(): void {
       mainWindow?.webContents.send('update-auth-error')
     }
   })
+}
+
+async function downloadPortableUpdate(updateInfo: any): Promise<void> {
+  try {
+    const token = getGitHubToken()
+    if (!token) {
+      throw new Error('No GitHub token available')
+    }
+
+    log.info('Update info received:', updateInfo)
+
+    // Buscar el asset portable (.exe) en los assets que ya vienen en updateInfo
+    const portableAsset = updateInfo.assets?.find(
+      (asset: any) =>
+        asset.name.toLowerCase().endsWith('.exe') &&
+        !asset.name.toLowerCase().includes('setup') &&
+        !asset.name.toLowerCase().includes('blockmap')
+    )
+
+    if (!portableAsset) {
+      log.error('No portable executable found in release assets')
+      throw new Error('No se encontró el ejecutable portable en la release')
+    }
+
+    log.info('Found portable asset:', portableAsset.name)
+
+    // Obtener la ubicación real del ejecutable portable
+    let currentDir: string
+
+    if (process.env.PORTABLE_EXECUTABLE_DIR) {
+      // Si está definida esta variable, es la ubicación real del portable
+      currentDir = process.env.PORTABLE_EXECUTABLE_DIR
+    } else if (process.env.PORTABLE_EXECUTABLE_FILE) {
+      // Si está definida esta variable, extraer el directorio
+      currentDir = path.dirname(process.env.PORTABLE_EXECUTABLE_FILE)
+    } else {
+      // Fallback: usar la ubicación del ejecutable actual
+      currentDir = path.dirname(process.execPath)
+    }
+
+    const newFileName = portableAsset.name
+    const downloadPath = path.join(currentDir, newFileName)
+
+    log.info(`Current executable path: ${process.execPath}`)
+    log.info(`PORTABLE_EXECUTABLE_DIR: ${process.env.PORTABLE_EXECUTABLE_DIR}`)
+    log.info(`PORTABLE_EXECUTABLE_FILE: ${process.env.PORTABLE_EXECUTABLE_FILE}`)
+    log.info(`Downloading portable update: ${newFileName} to ${currentDir}`)
+
+    // Para repos privados, usar la URL de la API en lugar de browser_download_url
+    const apiDownloadUrl = portableAsset.url
+
+    // Descargar manualmente usando fetch con el token correcto
+    const response = await fetch(apiDownloadUrl, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: 'application/octet-stream'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to download: ${response.status} ${response.statusText}`)
+    }
+
+    const totalSize = parseInt(response.headers.get('content-length') || '0', 10)
+    let downloadedSize = 0
+
+    log.info(`Total size: ${totalSize} bytes`)
+
+    // Crear stream de escritura
+    const fileStream = fs.createWriteStream(downloadPath)
+    const reader = response.body?.getReader()
+
+    if (!reader) {
+      throw new Error('Failed to get response reader')
+    }
+
+    const startTime = Date.now()
+    let lastProgressTime = Date.now()
+
+    mainWindow?.webContents.send('update-download-progress', {
+      bytesPerSecond: 0,
+      percent: 0,
+      transferred: 0,
+      total: totalSize
+    })
+
+    // Leer y escribir en chunks
+    while (true) {
+      const { done, value } = await reader.read()
+
+      if (done) break
+
+      downloadedSize += value.length
+      fileStream.write(value)
+
+      // Calcular progreso y velocidad
+      const now = Date.now()
+      const elapsed = (now - startTime) / 1000 // segundos
+      const speed = downloadedSize / elapsed // bytes por segundo
+      const percent = (downloadedSize / totalSize) * 100
+
+      // Enviar progreso cada 100ms para no saturar
+      if (now - lastProgressTime > 100) {
+        mainWindow?.webContents.send('update-download-progress', {
+          bytesPerSecond: Math.floor(speed),
+          percent: percent,
+          transferred: downloadedSize,
+          total: totalSize
+        })
+        updateProgressBar(percent / 100)
+        lastProgressTime = now
+      }
+    }
+
+    // Cerrar el stream
+    fileStream.end()
+
+    // Esperar a que termine de escribir
+    await new Promise<void>((resolve, reject) => {
+      fileStream.on('finish', resolve)
+      fileStream.on('error', reject)
+    })
+
+    log.info('Portable update downloaded successfully:', downloadPath)
+    updateProgressBar(1)
+
+    // Guardar la ruta del nuevo ejecutable
+    store.set('portable.newExecutablePath', downloadPath)
+
+    mainWindow?.webContents.send('update-downloaded', {
+      version: updateInfo.version
+    })
+  } catch (error) {
+    log.error('Error downloading portable update:', error)
+    updateProgressBar(-1)
+    mainWindow?.webContents.send('update-error', {
+      message: error instanceof Error ? error.message : 'Error desconocido'
+    })
+  }
+}
+
+function installPortableUpdate(): void {
+  const newExePath = store.get('portable.newExecutablePath') as string
+
+  if (!newExePath || !fs.existsSync(newExePath)) {
+    log.error('New portable executable not found')
+    mainWindow?.webContents.send('update-error', {
+      message: 'No se encontró el archivo de actualización'
+    })
+    return
+  }
+
+  log.info(`Launching new portable version: ${newExePath}`)
+
+  try {
+    const { spawn } = require('child_process')
+
+    // Iniciar el nuevo ejecutable
+    const child = spawn(
+      newExePath,
+      ['--previousfileportable', process.env.PORTABLE_EXECUTABLE_FILE],
+      {
+        detached: true,
+        stdio: 'ignore'
+      }
+    )
+
+    child.unref()
+
+    log.info('New portable version launched successfully')
+
+    // Limpiar el almacenamiento
+    store.delete('portable.newExecutablePath')
+
+    // Cerrar la aplicación actual
+    setTimeout(() => {
+      log.info('Closing current application')
+      app.quit()
+    }, 500)
+  } catch (error) {
+    log.error('Error launching new portable version:', error)
+    mainWindow?.webContents.send('update-error', {
+      message: error instanceof Error ? error.message : 'Error al ejecutar la actualización'
+    })
+  }
 }
 
 function checkForUpdates(): void {
@@ -358,6 +412,16 @@ async function checkInternetConnection(): Promise<boolean> {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('Secrecy Launcher')
 
+  // Buscar y eliminar el archivo portable anterior de forma compacta
+  process.argv.forEach((arg, i) => {
+    if (arg === '--previousfileportable' && process.argv[i + 1]) {
+      const filePath = process.argv[i + 1]
+      fs.unlink(filePath, (err) => {
+        if (!err) console.log(`Archivo portable anterior eliminado: ${filePath}`)
+      })
+    }
+  })
+
   // Configurar el auto-updater
   setupAutoUpdater()
 
@@ -368,17 +432,13 @@ app.whenReady().then(() => {
   ipcMain.on('ping', () => log.info('pong'))
 
   // Handler para instalar la actualización
+  // Reemplazar el handler existente en app.whenReady().then()
   ipcMain.on('install-update', () => {
     if (isPortable) {
-      // Para portable, usar nuestro sistema de batch
-      try {
-        executePortableUpdate()
-      } catch (error: any) {
-        log.error('Error installing portable update:', error)
-        mainWindow?.webContents.send('update-error', { error: error.message })
-      }
+      log.info('Installing portable update')
+      installPortableUpdate()
     } else {
-      // Para instalado, usar el método normal de electron-updater
+      log.info('Installing regular update')
       autoUpdater.quitAndInstall()
     }
   })
