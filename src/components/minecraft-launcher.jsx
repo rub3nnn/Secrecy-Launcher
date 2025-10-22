@@ -46,6 +46,7 @@ import {
 } from 'lucide-react'
 import { DualRangeSlider } from '@/components/ui/range-slider'
 import SkinViewerComponent from '@/components/minecraft-skin-viewer'
+import video from '@renderer/assets/minecraftVideo.webm'
 import { use } from 'react'
 ;(function () {
   var f, g
@@ -558,10 +559,7 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
           muted
           playsInline
         >
-          <source
-            src="https://www.minecraft.net/content/dam/minecraftnet/games/minecraft/videos/Homepage_Gameplay-Trailer_MC-OV_1080x720.webm"
-            type="video/webm"
-          />
+          <source src={video} type="video/webm" />
         </video>
 
         {/* Overlay para mejorar legibilidad */}
@@ -595,55 +593,58 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
               </div>
             )}
           </div>
-
-          <div className="mt-auto flex items-center justify-between">
-            {currentTab === 'smods' ? (
-              <div className="text-violet-500">
-                <p className="text-sm">Servidor</p>
-                <div className="flex items-center gap-2 group">
-                  <h2 className="text-3xl font-bold tracking-tight group-hover:text-gray-400  transition-colors">
-                    Secrecy Mods
-                  </h2>
+          {!versionsError && (
+            <div className="mt-auto flex items-center justify-between">
+              {currentTab === 'smods' ? (
+                <div className="text-violet-500">
+                  <p className="text-sm">Servidor</p>
+                  <div className="flex items-center gap-2 group">
+                    <h2 className="text-3xl font-bold tracking-tight group-hover:text-gray-400  transition-colors">
+                      Secrecy Mods
+                    </h2>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="text-white">
-                {selectedVersion.id && <p className="text-sm opacity-80">Versión seleccionada:</p>}
-                <div className="flex items-center gap-2 group">
-                  <h2 className="text-3xl font-bold tracking-tight group-hover:text-gray-400  transition-colors">
-                    {selectedVersion.id || 'Selecciona una versión'}
-                  </h2>
-                </div>
-              </div>
-            )}
-            <Button
-              size="lg"
-              className={`gap-2 px-8 transition-colors text-white ${currentTab === 'smods' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-green-600 hover:bg-green-700'}`}
-              onClick={
-                () => {
-                  setIsPlaying(true)
-                  window.electron.ipcRenderer.send('launch-minecraft')
-                }
-                //handlePlayGame
-              }
-              disabled={isPlaying || !selectedVersion}
-            >
-              {isPlaying ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                  {minecraftStatus.stage === 'installing-java' && 'Instalando Java...'}
-                  {minecraftStatus.stage === 'completed-java' && 'Cargando...'}
-                  {minecraftStatus.stage === 'installing-minecraft' && 'Descargando recursos...'}
-                  {minecraftStatus.stage === 'launching' && 'Iniciando juego...'}
-                </span>
               ) : (
-                <>
-                  <Play className="h-4 w-4" />
-                  Jugar
-                </>
+                <div className="text-white">
+                  {selectedVersion.id && (
+                    <p className="text-sm opacity-80">Versión seleccionada:</p>
+                  )}
+                  <div className="flex items-center gap-2 group">
+                    <h2 className="text-3xl font-bold tracking-tight group-hover:text-gray-400  transition-colors">
+                      {selectedVersion.id || 'Selecciona una versión'}
+                    </h2>
+                  </div>
+                </div>
               )}
-            </Button>
-          </div>
+              <Button
+                size="lg"
+                className={`gap-2 px-8 transition-colors text-white ${currentTab === 'smods' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-green-600 hover:bg-green-700'}`}
+                onClick={
+                  () => {
+                    setIsPlaying(true)
+                    window.electron.ipcRenderer.send('launch-minecraft')
+                  }
+                  //handlePlayGame
+                }
+                disabled={isPlaying || !selectedVersion}
+              >
+                {isPlaying ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    {minecraftStatus.stage === 'installing-java' && 'Instalando Java...'}
+                    {minecraftStatus.stage === 'completed-java' && 'Cargando...'}
+                    {minecraftStatus.stage === 'installing-minecraft' && 'Descargando recursos...'}
+                    {minecraftStatus.stage === 'launching' && 'Iniciando juego...'}
+                  </span>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4" />
+                    Jugar
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -732,12 +733,6 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
             <TabsTrigger value="versions">Versiones</TabsTrigger>
             <TabsTrigger value="settings">Configuración</TabsTrigger>
             <TabsTrigger value="news">Noticias</TabsTrigger>
-            <TabsTrigger value="modpacks">
-              <div className="flex items-center gap-1">Modpacks</div>
-            </TabsTrigger>
-            <TabsTrigger value="profiles">
-              <div className="flex items-center gap-1">Perfiles</div>
-            </TabsTrigger>
           </TabsList>
 
           {/* Modificar la sección de versiones en el TabsContent para incluir el filtro de snapshots */}

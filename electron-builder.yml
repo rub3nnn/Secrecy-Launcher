@@ -12,6 +12,9 @@ files:
 asarUnpack:
   - resources/**
 win:
+  target:
+    - nsis
+    - portable
   executableName: secrecy-launcher
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
@@ -40,4 +43,4 @@ appImage:
 npmRebuild: false
 publish:
   provider: generic
-  url: https://example.com/auto-updates
+  url: https://rub3n.es
