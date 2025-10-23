@@ -47,6 +47,7 @@ import {
 import { DualRangeSlider } from '@/components/ui/range-slider'
 import SkinViewerComponent from '@/components/minecraft-skin-viewer'
 import video from '@renderer/assets/minecraftVideo.webm'
+import modsimage from '@renderer/assets/minecraftmods.png'
 import { use } from 'react'
 ;(function () {
   var f, g
@@ -664,39 +665,34 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
           </>
         )}
       </div>
-      {/* Banner de Secrecy Mods Server */}
       <div className="container mx-auto px-6 pt-2">
-        <div className="relative overflow-hidden rounded-lg bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-600 p-6  text-white mb-3">
-          <div className="relative ">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-2xl font-bold mb-1">Versión desconectada</h2>
-                <p className="text-white/80 text-sm">
-                  Versión modificada para evitar bloqueo de red en el lanzamiento
-                </p>
+        <div className="relative overflow-hidden rounded-lg bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-600 p-6 text-white mb-3">
+          {/* Imagen de los personajes en la parte derecha */}
+          <img
+            src={modsimage}
+            alt="Personajes de Minecraft"
+            className="absolute top-0 right-0 bottom-0 h-full w-auto drop-shadow-lg pointer-events-none opacity-80"
+          />
+          <div className="relative z-10">
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/20 text-orange-100 mb-3">
+                <div className="w-3 h-3 rounded-full bg-orange-400"></div>
+                <span className="font-medium">BETA</span>
               </div>
-              <div className="text-right">
-                <div
-                  className={`inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/20 text-green-100`}
-                >
-                  <div className={`w-3 h-3 rounded-full bg-orange-400`}></div>
-                  <span className="font-medium">BETA</span>
-                </div>
-              </div>
+              <h2 className="text-3xl font-bold mb-2">Versión con mods</h2>
+              <p className="text-white/80 text-sm max-w-md">
+                Versión modificada para evitar bloqueo de red en el lanzamiento
+              </p>
             </div>
-
-            <div className="flex items-center justify-between">
+            <div className="flex justify-center">
               {/* Botón de jugar */}
               <Button
                 size="lg"
                 className="gap-2 px-8 bg-white/20 hover:bg-white/30 text-white border border-white/30 hover:border-white/50"
-                onClick={
-                  () => {
-                    setIsPlaying(true)
-                    window.electron.ipcRenderer.send('launch-server')
-                  }
-                  //handlePlayGame
-                }
+                onClick={() => {
+                  setIsPlaying(true)
+                  window.electron.ipcRenderer.send('launch-server')
+                }}
                 disabled={isPlaying}
               >
                 {isPlaying ? (
@@ -712,7 +708,6 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
                 )}
               </Button>
             </div>
-
             {/* Barra de progreso de instalación */}
             {isInstallingMods && (
               <div className="mt-4">
@@ -727,6 +722,7 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
           </div>
         </div>
       </div>
+
       <div className={`container mx-auto p-6 transition-all ${isPlaying ? 'pt-6' : 'pt-3'}`}>
         <Tabs value={currentTab} onValueChange={setCurrentTab}>
           <TabsList className="mb-6">

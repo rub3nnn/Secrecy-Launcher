@@ -1537,14 +1537,14 @@ app.whenReady().then(() => {
         root: minecraftDir,
         javaPath: javaPath,
         version: {
-          number: '1.21.10',
-          custom: '1.21.10',
-          type: 'Secrecy'
+          number: '1.21.1',
+          type: 'release'
         },
         memory: {
           min: memoryAllocation[0],
           max: memoryAllocation[1]
-        }
+        },
+        forge: minecraftDir + '\\versions\\neoforge-21.1.213-installer.jar'
       }
 
       function launchMinecraft() {
