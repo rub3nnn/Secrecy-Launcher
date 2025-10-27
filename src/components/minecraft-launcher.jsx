@@ -48,7 +48,6 @@ import { DualRangeSlider } from '@/components/ui/range-slider'
 import SkinViewerComponent from '@/components/minecraft-skin-viewer'
 import video from '@renderer/assets/minecraftVideo.webm'
 import modsimage from '@renderer/assets/minecraftmods.png'
-import { use } from 'react'
 ;(function () {
   var f, g
   f = (function () {
@@ -649,7 +648,6 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
         </div>
       </div>
 
-      {/* Loader que solo aparece cuando se está iniciando el juego */}
       <div
         className={`relative h-6 bg-muted overflow-hidden transition-opacity duration-300 ${isPlaying ? 'opacity-100' : 'opacity-0 h-0'}`}
       >
@@ -684,29 +682,62 @@ export function MinecraftLauncher({ minecraftStatus, scrollPosition }) {
                 Versión modificada para evitar bloqueo de red en el lanzamiento
               </p>
             </div>
-            <div className="flex justify-center">
-              {/* Botón de jugar */}
-              <Button
-                size="lg"
-                className="gap-2 px-8 bg-white/20 hover:bg-white/30 text-white border border-white/30 hover:border-white/50"
-                onClick={() => {
-                  setIsPlaying(true)
-                  window.electron.ipcRenderer.send('launch-server')
-                }}
-                disabled={isPlaying}
-              >
-                {isPlaying ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Cargando...
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4" />
-                    Jugar
-                  </>
-                )}
-              </Button>
+            <div className="flex justify-center gap-3">
+              {isPlaying ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  {/* Botón de jugar con mods */}
+                  <Button
+                    size="lg"
+                    className="gap-2 px-8 bg-white/20 hover:bg-white/30 text-white border border-white/30 hover:border-white/50"
+                    onClick={() => {
+                      setIsPlaying(true)
+                      window.electron.ipcRenderer.send('launch-server')
+                    }}
+                    disabled={isPlaying}
+                  >
+                    {isPlaying ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Cargando...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4" />
+                        Jugar con Mods
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Botón de jugar versión normal offline */}
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="gap-2 px-8 bg-white/20 hover:bg-white/30 text-white border border-white/30 hover:border-white/50"
+                    onClick={() => {
+                      setIsPlaying(true)
+                      window.electron.ipcRenderer.send('launch-offline')
+                    }}
+                    disabled={isPlaying}
+                  >
+                    {isPlaying ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Cargando...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4" />
+                        Jugar Normal
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
             </div>
             {/* Barra de progreso de instalación */}
             {isInstallingMods && (

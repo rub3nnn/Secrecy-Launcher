@@ -1585,6 +1585,174 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.on('launch-offline', async () => {
+    const serverDataUrl = 'https://secrecyfiles.github.io/fileshoster/secrecyserver/data.json'
+    const minecraftDir = path.join(getDataPath(), 'secrecy-offline')
+
+    // Asegurarse de que el directorio existe
+    ensureDirectory(minecraftDir)
+
+    try {
+      // 1. Obtener información del servidor
+      const response = await fetch(serverDataUrl)
+      if (!response.ok) {
+        throw new Error('No se pudo obtener la información del servidor')
+      }
+      const serverData = await response.json()
+
+      // 2. Verificar si necesitamos descargar la nueva versión
+      const storedVersion = store.get('minecraft.offline.version')
+      const needsDownload = storedVersion !== serverData.offlineVersion
+
+      if (needsDownload) {
+        mainWindow?.webContents.send('minecraft-status', {
+          stage: 'downloading-server',
+          progress: 0,
+          message: 'Descargando archivos del servidor...'
+        })
+
+        // 3. Descargar el archivo comprimido
+        const downloadPath = path.join(minecraftDir, 'server.rar')
+        const dl = new DownloaderHelper(serverData.offlineFileUrl, minecraftDir, {
+          fileName: 'server.rar',
+          override: true,
+          retry: { maxRetries: 3, delay: 3000 }
+        })
+
+        // Eventos de progreso de descarga
+        dl.on('progress', (stats) => {
+          const progress = Math.floor(stats.progress)
+          mainWindow?.webContents.send('minecraft-status', {
+            stage: 'downloading-server',
+            progress: progress,
+            message: `Descargando paquetes del servidor... ${progress}%`
+          })
+        })
+
+        await new Promise((resolve, reject) => {
+          dl.on('end', () => {
+            mainWindow?.webContents.send('minecraft-status', {
+              stage: 'extracting-server',
+              progress: 0,
+              message: 'Extrayendo archivos...'
+            })
+            resolve(true)
+          })
+          dl.on('error', reject)
+          dl.start().catch(reject)
+        })
+
+        // 4. Extraer el archivo
+        const worker = new Worker(path.join(__dirname, '../../resources/extractWorker.js'), {
+          workerData: {
+            filePaths: [downloadPath],
+            extractPath: minecraftDir,
+            deleteAfter: true
+          }
+        })
+
+        await new Promise((resolve, reject) => {
+          worker.on('message', (msg) => {
+            if (msg.type === 'progress') {
+              mainWindow?.webContents.send('minecraft-status', {
+                stage: 'extracting-server',
+                progress: msg.progress,
+                message: `Extrayendo archivos... ${msg.progress}%`
+              })
+            }
+            if (msg.type === 'done') {
+              // Eliminar el archivo RAR después de la extracción
+              try {
+                fs.unlinkSync(downloadPath)
+                console.log('Archivo RAR eliminado después de la extracción')
+              } catch (err) {
+                console.error('Error al eliminar el archivo RAR:', err)
+              }
+              resolve(true)
+            }
+          })
+          worker.on('error', (err) => {
+            console.error('Error en el worker de extracción:', err)
+            reject(err)
+          })
+          worker.on('exit', (code) => {
+            if (code !== 0) {
+              console.error(`Worker de extracción terminó con código ${code}`)
+              reject(new Error(`Worker exited with code ${code}`))
+            }
+          })
+        })
+
+        // 5. Actualizar la versión almacenada
+        store.set('minecraft.offline.version', serverData.offlineVersion)
+      }
+
+      // 6. Lanzar el servidor (código existente)
+      const javaPath = (await getJava(21)) as string
+      console.log('Java encontrado en:', javaPath)
+      const userAccount = store.get('minecraft.userAccount') as {
+        type: string
+        username: string
+      }
+      const premiumSession = store.get('minecraft.auth') as any
+      const memoryAllocation = store.get('minecraft.settings.memoryAllocation') as [number, number]
+
+      const opts: any = {
+        authorization:
+          userAccount.type === 'premium'
+            ? premiumSession
+            : Authenticator.getAuth(userAccount.username ?? 'Player'),
+        root: minecraftDir,
+        javaPath: javaPath,
+        version: {
+          number: '1.21.1',
+          type: 'release'
+        },
+        memory: {
+          min: memoryAllocation[0],
+          max: memoryAllocation[1]
+        },
+        forge: minecraftDir + '\\versions\\neoforge-21.1.213-installer.jar'
+      }
+
+      function launchMinecraft() {
+        launcher.launch(opts)
+        launcher.on('debug', (data) => console.log('Minecraft debug:', data))
+        launcher.on('data', (data) => console.log('Minecraft data:', data))
+        launcher.on('progress', (e) => {
+          mainWindow?.webContents.send('minecraft-status', {
+            stage: 'installing-minecraft',
+            progress: (e.task / e.total) * 100,
+            message:
+              'Cargando archivos de Minecraft... ' + ((e.task / e.total) * 100).toFixed(0) + '%'
+          })
+        })
+        launcher.on('arguments', () => {
+          mainWindow?.webContents.send('minecraft-status', {
+            stage: 'launching',
+            message: 'Iniciando..'
+          })
+          mainWindow?.hide()
+        })
+        launcher.on('close', () => {
+          mainWindow?.show()
+          mainWindow?.webContents.send('minecraft-status', { stage: 'closed' })
+        })
+      }
+
+      launchMinecraft()
+    } catch (error) {
+      console.error('Error al lanzar el servidor:', error)
+      if (mainWindow) {
+        mainWindow.show()
+        mainWindow.webContents.send('minecraft-error', {
+          message: 'Error al lanzar el servidor',
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+  })
+
   ipcMain.handle('fetchGameData', async () => {
     log.info('Fetching game data...')
     try {
