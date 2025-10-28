@@ -8,6 +8,7 @@ import Store from 'electron-store'
 // ====== LÓGICA DE DETECCIÓN DE RUTA PERSONALIZADA (igual que en index) ======
 const customPath = 'D:\\SecrecyLauncher'
 const customConfigPath = path.join(customPath, 'config.json')
+let exception: boolean
 
 let store: Store
 let customDataPath: string | null = null
@@ -23,6 +24,12 @@ if (fs.existsSync(customConfigPath)) {
   // Usar la ruta por defecto
   store = new Store()
   console.log(`[Preload] Using default data path (userData)`)
+}
+
+if (customDataPath !== null) {
+  exception = true
+} else {
+  exception = false
 }
 
 // Función helper para obtener la ruta de datos (igual que en index)
@@ -138,6 +145,7 @@ if (process.contextIsolated) {
       // Método adicional para obtener la ruta de datos actual
       getDataPath: () => getDataPath()
     })
+    contextBridge.exposeInMainWorld('exception', exception)
   } catch (error) {
     console.error('ContextBridge Error:', error)
   }

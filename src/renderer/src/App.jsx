@@ -4,6 +4,7 @@ import { SidebarNav } from '@/components/sidebar-nav'
 import { UpdateNotification } from '@/components/update'
 import { AppErrorDialog } from '@/components/app-error-dialog'
 import { MinecraftLauncher } from '@/components/minecraft-launcher'
+import { MinecraftException } from '@/components/minecraft-exception'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { PinAccess } from '@/components/pass-game-library'
 function App() {
@@ -12,7 +13,7 @@ function App() {
   const [error, setError] = useState(null)
   const [showErrorDialog, setShowErrorDialog] = useState(false)
   const [isDownloadsSidebarOpen, setIsDownloadsSidebarOpen] = useState(false)
-  const [currentSection, setCurrentSection] = useState('minecraft')
+  const [currentSection, setCurrentSection] = useState(window.exception ? 'exception' : 'minecraft')
   const [minecraftStatus, setMinecraftStatus] = useState({})
   const [libraryAccess, setLibraryAccess] = useState(false)
   const [currentError, setCurrentError] = useState({
@@ -310,6 +311,9 @@ function App() {
           )}
           {currentSection === 'minecraft' && (
             <MinecraftLauncher minecraftStatus={minecraftStatus} scrollPosition={scrollPosition} />
+          )}
+          {currentSection === 'exception' && (
+            <MinecraftException minecraftStatus={minecraftStatus} scrollPosition={scrollPosition} />
           )}
         </ScrollArea>
       </main>

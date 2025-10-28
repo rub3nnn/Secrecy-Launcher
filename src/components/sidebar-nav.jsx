@@ -1,4 +1,12 @@
-import { Download, LibraryBig, Gamepad, RefreshCcw, Github, ExternalLink } from 'lucide-react'
+import {
+  Download,
+  LibraryBig,
+  Gamepad,
+  RefreshCcw,
+  Github,
+  ExternalLink,
+  Server
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -48,6 +56,17 @@ export function SidebarNav({
         <ScrollArea className="flex-1">
           <div className="p-4">
             <nav className="grid gap-2">
+              {window.exception && (
+                <Button
+                  variant={currentSection === 'exception' ? 'default' : 'outline'}
+                  className="justify-start gap-2"
+                  onClick={() => setCurrentSection('exception')}
+                >
+                  <Server className="h-4 w-4" />
+                  Servidor
+                </Button>
+              )}
+
               <Button
                 variant={currentSection === 'minecraft' ? 'default' : 'outline'}
                 className="justify-start gap-2"

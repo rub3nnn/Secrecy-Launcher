@@ -1711,8 +1711,7 @@ app.whenReady().then(() => {
         memory: {
           min: memoryAllocation[0],
           max: memoryAllocation[1]
-        },
-        forge: minecraftDir + '\\versions\\neoforge-21.1.213-installer.jar'
+        }
       }
 
       function launchMinecraft() {
