@@ -8,6 +8,7 @@ const AdmZip = require('adm-zip')
 const filePaths = workerData.filePaths
 const extractPath = workerData.extractPath
 const deleteAfter = workerData.deleteAfter || false
+const gameData = workerData.gameData
 
 let totalFiles = 0
 let extractedFiles = 0
@@ -15,10 +16,17 @@ let extractionErrors = 0
 
 async function extractRar(filePath) {
   try {
-    const extractor = await createExtractorFromFile({
+    const extractorOptions = {
       filepath: filePath,
       targetPath: extractPath
-    })
+    }
+
+    // Agregar contraseña si existe
+    if (gameData && gameData.extractPassword) {
+      extractorOptions.password = gameData.extractPassword
+    }
+
+    const extractor = await createExtractorFromFile(extractorOptions)
 
     const list = extractor.getFileList()
     const fileHeaders = [...list.fileHeaders]

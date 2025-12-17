@@ -471,6 +471,8 @@ app.whenReady().then(() => {
     ) => {
       console.log(update)
       log.info('Installing game:', gameData.title)
+      log.info('Full gameData object:', JSON.stringify(gameData, null, 2))
+      console.log('Full gameData object:', gameData)
 
       const downloadPath = path.join(getDataPath(), 'game-downloads', gameData.id.toString())
       const extractPath = path.join(
