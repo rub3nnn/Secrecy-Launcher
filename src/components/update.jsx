@@ -5,7 +5,6 @@ import { Download, X, Check, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { motion, AnimatePresence } from 'framer-motion'
-import { VersionUpdateAnimation } from '@/components/update-animation'
 
 export function UpdateNotification() {
   const [updateInfo, setUpdateInfo] = useState({
@@ -83,7 +82,6 @@ export function UpdateNotification() {
 
   return (
     <>
-      <VersionUpdateAnimation />
       {/* Notificación de actualización disponible */}
       <AnimatePresence>
         {false && (
@@ -115,7 +113,7 @@ export function UpdateNotification() {
                   <p className="text-sm text-muted-foreground mt-1">
                     {updateInfo.downloaded
                       ? 'La actualización está lista para instalarse.'
-                      : 'Secrecy Launcher tiene una nueva actualización con mejoras y correcciones de errores.'}
+                      : 'Secrecy Minecraft tiene una nueva actualización con mejoras y correcciones de errores.'}
                   </p>
                   <div className="mt-3 flex gap-2">
                     <Button size="sm" onClick={handleInstallUpdate}>
