@@ -1,11 +1,10 @@
 {
-  "name": "secrecy-launcher",
-  "productName": "Secrecy Launcher",
-  "version": "3.5.5",
-  "description": "Secrecy Launcher",
+  "name": "secrecy-minecraft",
+  "version": "4.0.0",
+  "description": "Secrecy Minecraft",
   "main": "./out/main/index.js",
-  "author": "Secrecy",
-  "homepage": "https://secrecylauncher.vercel.app",
+  "author": "rub3n.me",
+  "homepage": "https://secrecyminecraft.rub3n.me",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",

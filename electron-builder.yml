@@ -1,5 +1,5 @@
-appId: com.secrecy.launcher
-productName: Secrecy Launcher
+appId: com.secrecy.minecraft
+productName: Secrecy Minecraft
 directories:
   buildResources: build
 
@@ -27,13 +27,13 @@ win:
   target:
     - nsis
     - portable
-  executableName: SecrecyLauncher
+  executableName: SecrecyMinecraft
   artifactName: ${name}-${version}.${ext}
   publish:
     provider: github
     owner: rub3nnn
     repo: Secrecy-Launcher
-    private: true
+    private: false
 
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
@@ -61,7 +61,7 @@ mac:
     provider: github
     owner: rub3nnn
     repo: Secrecy-Launcher
-    private: true
+    private: false
 
 dmg:
   artifactName: ${name}-${version}.${ext}
@@ -80,7 +80,7 @@ linux:
     provider: github
     owner: rub3nnn
     repo: Secrecy-Launcher
-    private: true
+    private: false
 
 appImage:
   artifactName: ${name}-${version}.${ext}

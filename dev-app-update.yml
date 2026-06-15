@@ -1,3 +1,4 @@
 provider: github
-url: https://github.com/rub3nnn/secrecy-launcher/releases
-updaterCacheDirName: secrecy-launcher-updater
+owner: rub3nnn
+repo: Secrecy-Launcher
+updaterCacheDirName: secrecy-minecraft-updater

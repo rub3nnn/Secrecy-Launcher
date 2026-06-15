@@ -66,7 +66,7 @@ const SkinViewerComponent = ({
       } else if (animation === 'running') {
         skinViewerRef.current.animation = new skinview3d.RunningAnimation()
       } else if (animation === 'rotating') {
-        skinViewerRef.current.animation = new skinview3d.RotatingAnimation()
+        skinViewerRef.current.animation = new skinview3d.IdleAnimation()
       } else {
         skinViewerRef.current.animation = null
       }

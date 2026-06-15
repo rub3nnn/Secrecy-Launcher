@@ -6,7 +6,7 @@ const { createWriteStream } = require('fs')
 const AdmZip = require('adm-zip')
 const { URL } = require('url')
 
-const { downloadUrl, extractPath, directoryName } = workerData
+const { downloadUrl, extractPath } = workerData
 const javaDir = extractPath
 
 // Crear directorio si no existe
@@ -14,7 +14,7 @@ if (!fs.existsSync(javaDir)) {
   fs.mkdirSync(javaDir, { recursive: true })
 }
 
-const tempZipPath = path.join(javaDir, 'temurin_temp.zip')
+const tempZipPath = path.join(javaDir, 'java_temp.zip')
 
 async function downloadWithRedirects(url, dest) {
   return new Promise((resolve, reject) => {
@@ -76,9 +76,6 @@ async function downloadWithRedirects(url, dest) {
 }
 
 async function extractZip(zipPath, targetPath) {
-  let totalFiles = 0
-  let extractionErrors = 0
-
   try {
     if (!fs.existsSync(zipPath)) {
       throw new Error(`Archivo no encontrado: ${zipPath}`)
@@ -86,7 +83,7 @@ async function extractZip(zipPath, targetPath) {
 
     const zip = new AdmZip(zipPath)
     const zipEntries = zip.getEntries()
-    totalFiles = zipEntries.length
+    const totalFiles = zipEntries.length
 
     parentPort.postMessage({
       type: 'extract-start',
@@ -98,47 +95,55 @@ async function extractZip(zipPath, targetPath) {
       fs.mkdirSync(targetPath, { recursive: true })
     }
 
-    for (const entry of zipEntries) {
-      try {
-        const progress = Math.min(99, Math.floor(totalFiles * 100))
-        parentPort.postMessage({
-          type: 'extract-progress',
-          fileName: entry.entryName,
-          progress,
-          totalFiles
-        })
-      } catch (err) {
-        extractionErrors++
-        parentPort.postMessage({
-          type: 'extract-error',
-          fileName: entry.entryName,
-          error: err.message
-        })
-      }
-    }
+    parentPort.postMessage({
+      type: 'extract-progress',
+      progress: 50,
+      totalFiles
+    })
 
     zip.extractAllTo(targetPath, true)
-    return { success: true, extractionErrors }
+
+    parentPort.postMessage({
+      type: 'extract-progress',
+      progress: 100,
+      totalFiles
+    })
+
+    return { success: true }
   } catch (err) {
     parentPort.postMessage({
       type: 'error',
       stage: 'extraction',
       error: err.message
     })
-    return { success: false, extractionErrors }
+    return { success: false }
   }
+}
+
+function findJavaw(dir) {
+  const files = fs.readdirSync(dir)
+  for (const file of files) {
+    const fullPath = path.join(dir, file)
+    const stat = fs.statSync(fullPath)
+    if (stat.isDirectory()) {
+      const found = findJavaw(fullPath)
+      if (found) return found
+    } else if (file.toLowerCase() === 'javaw.exe') {
+      return fullPath
+    }
+  }
+  return null
 }
 
 async function processJDKInstallation() {
   try {
-    // Paso 1: Descargar con manejo de redirecciones
-    parentPort.postMessage({ type: 'status', message: `Iniciando descarga de JDK` })
+    // Paso 1: Descargar
+    parentPort.postMessage({ type: 'status', message: `Descargando Java` })
     await downloadWithRedirects(downloadUrl, tempZipPath)
 
-    // Paso 2: Extraer el archivo
-    parentPort.postMessage({ type: 'status', message: `Extrayendo JDK` })
-    const targetPath = path.join(javaDir)
-    const { success, extractionErrors } = await extractZip(tempZipPath, targetPath)
+    // Paso 2: Extraer
+    parentPort.postMessage({ type: 'status', message: `Instalando Java` })
+    const { success } = await extractZip(tempZipPath, javaDir)
 
     // Paso 3: Limpieza
     try {
@@ -150,11 +155,19 @@ async function processJDKInstallation() {
     }
 
     if (success) {
-      parentPort.postMessage({
-        type: 'done',
-        javaPath: path.join(extractPath, directoryName, 'bin', 'javaw.exe'),
-        extractionErrors
-      })
+      const javawPath = findJavaw(javaDir)
+      if (javawPath) {
+        parentPort.postMessage({
+          type: 'done',
+          javaPath: javawPath
+        })
+      } else {
+        parentPort.postMessage({
+          type: 'error',
+          stage: 'verification',
+          error: 'No se pudo encontrar javaw.exe en los archivos extraídos'
+        })
+      }
     }
   } catch (err) {
     parentPort.postMessage({

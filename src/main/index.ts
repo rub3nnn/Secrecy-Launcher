@@ -1,60 +1,100 @@
-import { app, shell, BrowserWindow, Notification, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { DownloaderHelper } from 'node-downloader-helper'
 import fs from 'fs'
-import Store from 'electron-store'
+import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
-import { Worker } from 'worker_threads'
-import { Client, Authenticator } from 'minecraft-launcher-core'
-import os from 'os'
-import { Auth } from 'msmc'
 
-// Configuración del logger
+// Set custom app name and userData path for secrecy-minecraft
+app.setName('secrecy-minecraft')
+const appDataPath = path.join(app.getPath('appData'), 'secrecy-minecraft')
+app.setPath('userData', appDataPath)
+
+// Configure electron-log to use the correct secrecy-minecraft directory
+log.transports.file.resolvePathFn = () => path.join(appDataPath, 'logs', 'main.log')
+
+// Respond to synchronous get-user-data-path requests from preload
+ipcMain.on('get-user-data-path', (event) => {
+  event.returnValue = app.getPath('userData')
+})
+
+// Respond to synchronous get-default-minecraft-path requests from preload
+ipcMain.on('get-default-minecraft-path', (event) => {
+  event.returnValue = getDefaultMinecraftPath()
+})
+
+// Legacy Secrecy Launcher migration logic
+const oldPaths = [
+  path.join(app.getPath('appData'), 'Secrecy Launcher'),
+  path.join(app.getPath('appData'), 'Secrecy Minecraft')
+]
+let oldLauncherFound = false
+
+// Create the new folder if it doesn't exist yet
+if (!fs.existsSync(appDataPath)) {
+  fs.mkdirSync(appDataPath, { recursive: true })
+}
+
+for (const oldPath of oldPaths) {
+  if (fs.existsSync(oldPath)) {
+    // Only trigger the visual migration screen if the original "Secrecy Launcher" is found
+    if (oldPath.endsWith('Secrecy Launcher')) {
+      oldLauncherFound = true
+    }
+
+    const oldConfigPath = path.join(oldPath, 'config.json')
+    const newConfigPath = path.join(appDataPath, 'config.json')
+
+    // If we have an old config.json and the new one doesn't exist yet, copy it
+    if (fs.existsSync(oldConfigPath) && !fs.existsSync(newConfigPath)) {
+      try {
+        fs.copyFileSync(oldConfigPath, newConfigPath)
+        log.info(`[Migration] Successfully copied config.json from ${oldPath} to ${appDataPath}`)
+      } catch (copyErr: any) {
+        log.error(`[Migration] Failed to copy config.json from ${oldPath}: ${copyErr.message}`)
+      }
+    }
+
+    // Delete the old directory entirely
+    try {
+      deleteFolderRecursive(oldPath)
+      log.info(`[Migration] Successfully deleted legacy folder: ${oldPath}`)
+    } catch (delErr: any) {
+      log.error(`[Migration] Failed to delete legacy folder ${oldPath}: ${delErr.message}`)
+    }
+  }
+}
+
+function deleteFolderRecursive(folderPath: string) {
+  if (fs.existsSync(folderPath)) {
+    fs.readdirSync(folderPath).forEach((file) => {
+      const curPath = path.join(folderPath, file)
+      if (fs.lstatSync(curPath).isDirectory()) {
+        deleteFolderRecursive(curPath)
+      } else {
+        fs.unlinkSync(curPath)
+      }
+    })
+    fs.rmdirSync(folderPath)
+  }
+}
+
+let mainWindow: BrowserWindow | null = null
+
+import { ConfigStore, getDefaultMinecraftPath } from './services/ConfigStore'
+import { AuthManager } from './services/AuthManager'
+import { MinecraftLauncher } from './services/MinecraftLauncher'
+import { JavaManager } from './services/JavaManager'
+
+// Setup Logger
 log.transports.file.level = 'info'
 log.transports.file.maxSize = 5 * 1024 * 1024 // 5MB
 log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}'
 
-const customPath = 'D:\\SecrecyLauncher'
-const customConfigPath = path.join(customPath, 'config.json')
-const isPortable = !app.isPackaged || process.env.PORTABLE_EXECUTABLE_FILE !== undefined
-
-// Detectar si existe el config.json en la ruta personalizada
-let store: Store
-let customDataPath: string | null = null
-
-if (fs.existsSync(customConfigPath)) {
-  // Usar la ruta personalizada
-  store = new Store({
-    cwd: customPath
-  })
-  customDataPath = customPath
-  log.info(`Using custom data path: ${customPath}`)
-} else {
-  // Usar la ruta por defecto
-  store = new Store()
-  log.info(`Using default data path: ${app.getPath('userData')}`)
-}
-
-// Función helper para obtener la ruta de datos
-function getDataPath(): string {
-  return customDataPath || app.getPath('userData')
-}
-
-const activeDownloads = new Map<number, DownloaderHelper>()
-
-let mainWindow: BrowserWindow | null = null
-
-const getIconPath = () => {
+function getIconPath() {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'icon.png')
     : path.join(__dirname, '../../resources/icon.png')
-}
-
-// Función para obtener el token de forma segura
-function getGitHubToken() {
-  return import.meta.env.MAIN_VITE_GH_TOKEN
 }
 
 function createWindow(): void {
@@ -64,7 +104,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     icon: getIconPath(),
-    ...(process.platform === 'linux' ? { getIconPath } : {}),
+    ...(process.platform === 'linux' ? { icon: getIconPath() } : {}),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -89,1932 +129,231 @@ function createWindow(): void {
 }
 
 function setupAutoUpdater(): void {
-  const token = getGitHubToken()
-
-  if (!token && !is.dev) {
-    log.error('No se encontró token de GitHub para el auto-updater')
-    return
-  }
-
   if (is.dev) {
     autoUpdater.forceDevUpdateConfig = true
   }
 
-  // Para portable NO auto-descargar, para instalado SÍ
-  autoUpdater.autoDownload = !isPortable
+  autoUpdater.autoDownload = true
 
-  if (token) {
-    autoUpdater.setFeedURL({
-      provider: 'github',
-      owner: 'rub3nnn',
-      repo: 'Secrecy-Launcher',
-      token: token,
-      private: true
-    })
-  }
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'rub3nnn',
+    repo: 'Secrecy-Launcher'
+  })
 
   autoUpdater.logger = {
-    info: (message) => log.info('Info:', message),
-    error: (message) => log.error('Error:', message),
-    warn: (message) => log.warn('Warn:', message),
-    debug: (message) => log.debug('Debug:', message)
+    info: (message) => log.info('[Updater] Info:', message),
+    error: (message) => log.error('[Updater] Error:', message),
+    warn: (message) => log.warn('[Updater] Warn:', message),
+    debug: (message) => log.debug('[Updater] Debug:', message)
   }
 
   autoUpdater.on('update-available', (info) => {
-    log.info('Update available:', info)
-
-    // Si es portable, iniciar descarga manual
-    if (isPortable) {
-      downloadPortableUpdate(info)
-    }
-
+    log.info('[Updater] Update available:', info)
     mainWindow?.webContents.send('update-available', info)
   })
 
   autoUpdater.on('update-not-available', (info) => {
-    log.info('Update not available:', info)
     mainWindow?.webContents.send('update-not-available', info)
   })
 
   autoUpdater.on('download-progress', (progressInfo) => {
-    log.info('Download progress:', progressInfo)
     mainWindow?.webContents.send('update-download-progress', progressInfo)
   })
 
   autoUpdater.on('update-downloaded', (info) => {
-    log.info('Update downloaded:', info)
     mainWindow?.webContents.send('update-downloaded', info)
   })
 
   autoUpdater.on('error', (error) => {
-    log.error('Update error:', error)
+    log.error('[Updater] Error:', error)
     mainWindow?.webContents.send('update-error', error)
-
-    if (error.message.includes('401') || error.message.includes('403')) {
-      log.error('Error de autenticación - Verifica tu token de GitHub')
-      mainWindow?.webContents.send('update-auth-error')
-    }
   })
-}
-
-async function downloadPortableUpdate(updateInfo: any): Promise<void> {
-  try {
-    const token = getGitHubToken()
-    if (!token) {
-      throw new Error('No GitHub token available')
-    }
-
-    log.info('Update info received:', updateInfo)
-
-    // Buscar el asset portable (.exe) en los assets que ya vienen en updateInfo
-    const portableAsset = updateInfo.assets?.find(
-      (asset: any) =>
-        asset.name.toLowerCase().endsWith('.exe') &&
-        !asset.name.toLowerCase().includes('setup') &&
-        !asset.name.toLowerCase().includes('blockmap')
-    )
-
-    if (!portableAsset) {
-      log.error('No portable executable found in release assets')
-      throw new Error('No se encontró el ejecutable portable en la release')
-    }
-
-    log.info('Found portable asset:', portableAsset.name)
-
-    // Obtener la ubicación real del ejecutable portable
-    let currentDir: string
-
-    if (process.env.PORTABLE_EXECUTABLE_DIR) {
-      // Si está definida esta variable, es la ubicación real del portable
-      currentDir = process.env.PORTABLE_EXECUTABLE_DIR
-    } else if (process.env.PORTABLE_EXECUTABLE_FILE) {
-      // Si está definida esta variable, extraer el directorio
-      currentDir = path.dirname(process.env.PORTABLE_EXECUTABLE_FILE)
-    } else {
-      // Fallback: usar la ubicación del ejecutable actual
-      currentDir = path.dirname(process.execPath)
-    }
-
-    const newFileName = portableAsset.name
-    const downloadPath = path.join(currentDir, newFileName)
-
-    log.info(`Current executable path: ${process.execPath}`)
-    log.info(`PORTABLE_EXECUTABLE_DIR: ${process.env.PORTABLE_EXECUTABLE_DIR}`)
-    log.info(`PORTABLE_EXECUTABLE_FILE: ${process.env.PORTABLE_EXECUTABLE_FILE}`)
-    log.info(`Downloading portable update: ${newFileName} to ${currentDir}`)
-
-    // Para repos privados, usar la URL de la API en lugar de browser_download_url
-    const apiDownloadUrl = portableAsset.url
-
-    // Descargar manualmente usando fetch con el token correcto
-    const response = await fetch(apiDownloadUrl, {
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: 'application/octet-stream'
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to download: ${response.status} ${response.statusText}`)
-    }
-
-    const totalSize = parseInt(response.headers.get('content-length') || '0', 10)
-    let downloadedSize = 0
-
-    log.info(`Total size: ${totalSize} bytes`)
-
-    // Crear stream de escritura
-    const fileStream = fs.createWriteStream(downloadPath)
-    const reader = response.body?.getReader()
-
-    if (!reader) {
-      throw new Error('Failed to get response reader')
-    }
-
-    const startTime = Date.now()
-    let lastProgressTime = Date.now()
-
-    mainWindow?.webContents.send('update-download-progress', {
-      bytesPerSecond: 0,
-      percent: 0,
-      transferred: 0,
-      total: totalSize
-    })
-
-    // Leer y escribir en chunks
-    while (true) {
-      const { done, value } = await reader.read()
-
-      if (done) break
-
-      downloadedSize += value.length
-      fileStream.write(value)
-
-      // Calcular progreso y velocidad
-      const now = Date.now()
-      const elapsed = (now - startTime) / 1000 // segundos
-      const speed = downloadedSize / elapsed // bytes por segundo
-      const percent = (downloadedSize / totalSize) * 100
-
-      // Enviar progreso cada 100ms para no saturar
-      if (now - lastProgressTime > 100) {
-        mainWindow?.webContents.send('update-download-progress', {
-          bytesPerSecond: Math.floor(speed),
-          percent: percent,
-          transferred: downloadedSize,
-          total: totalSize
-        })
-        updateProgressBar(percent / 100)
-        lastProgressTime = now
-      }
-    }
-
-    // Cerrar el stream
-    fileStream.end()
-
-    // Esperar a que termine de escribir
-    await new Promise<void>((resolve, reject) => {
-      fileStream.on('finish', resolve)
-      fileStream.on('error', reject)
-    })
-
-    log.info('Portable update downloaded successfully:', downloadPath)
-    updateProgressBar(1)
-
-    // Guardar la ruta del nuevo ejecutable
-    store.set('portable.newExecutablePath', downloadPath)
-
-    mainWindow?.webContents.send('update-downloaded', {
-      version: updateInfo.version
-    })
-  } catch (error) {
-    log.error('Error downloading portable update:', error)
-    updateProgressBar(-1)
-    mainWindow?.webContents.send('update-error', {
-      message: error instanceof Error ? error.message : 'Error desconocido'
-    })
-  }
-}
-
-function installPortableUpdate(): void {
-  const newExePath = store.get('portable.newExecutablePath') as string
-
-  if (!newExePath || !fs.existsSync(newExePath)) {
-    log.error('New portable executable not found')
-    mainWindow?.webContents.send('update-error', {
-      message: 'No se encontró el archivo de actualización'
-    })
-    return
-  }
-
-  log.info(`Launching new portable version: ${newExePath}`)
-
-  try {
-    const { spawn } = require('child_process')
-
-    // Iniciar el nuevo ejecutable
-    const child = spawn(
-      newExePath,
-      ['--previousfileportable', process.env.PORTABLE_EXECUTABLE_FILE],
-      {
-        detached: true,
-        stdio: 'ignore'
-      }
-    )
-
-    child.unref()
-
-    log.info('New portable version launched successfully')
-
-    // Limpiar el almacenamiento
-    store.delete('portable.newExecutablePath')
-
-    // Cerrar la aplicación actual
-    setTimeout(() => {
-      log.info('Closing current application')
-      app.quit()
-    }, 500)
-  } catch (error) {
-    log.error('Error launching new portable version:', error)
-    mainWindow?.webContents.send('update-error', {
-      message: error instanceof Error ? error.message : 'Error al ejecutar la actualización'
-    })
-  }
 }
 
 function checkForUpdates(): void {
-  log.info('Comprobando actualizaciones...')
+  if (is.dev) {
+    log.info('[Updater] Skipped update check in development')
+    return
+  }
   autoUpdater.checkForUpdates().catch((err) => {
-    log.error('Error al comprobar actualizaciones:', err)
+    log.error('[Updater] Failed update check:', err)
   })
 }
 
-function ensureDirectory(directoryPath: string): void {
-  if (!fs.existsSync(directoryPath)) {
-    fs.mkdirSync(directoryPath, { recursive: true })
-    log.info(`Created directory: ${directoryPath}`)
-  }
-}
-
-function showNotificationIfBackground(title: string, body: string) {
-  if (!mainWindow) return
-
-  // Verifica si la ventana está minimizada, oculta o no está enfocada
-  if (mainWindow.isMinimized() || !mainWindow.isVisible() || !mainWindow.isFocused()) {
-    // Crea una notificación
-    const icon = getIconPath()
-
-    const notification = new Notification({
-      title,
-      body,
-      icon: icon
-    })
-
-    notification.show()
-
-    // Opcional: enfocar la ventana al hacer clic en la notificación
-    notification.on('click', () => {
-      if (mainWindow) {
-        if (mainWindow.isMinimized()) mainWindow.restore()
-        mainWindow.focus()
-      }
-    })
-  }
-  // Si la ventana está activa, no hacer nada
-}
-
-function updateProgressBar(progress: number): void {
-  if (!mainWindow) return
-
-  if (progress < 0) {
-    mainWindow.setProgressBar(-1)
-  } else if (progress >= 1) {
-    mainWindow.setProgressBar(1)
-    setTimeout(() => mainWindow?.setProgressBar(-1), 1000)
-  } else {
-    mainWindow.setProgressBar(progress)
-  }
-}
-
-// Agregar función para verificar conectividad
-async function checkInternetConnection(): Promise<boolean> {
-  try {
-    const response = await fetch('https://www.google.com', {
-      method: 'HEAD',
-      cache: 'no-cache'
-    })
-    return response.ok
-  } catch {
-    return false
-  }
-}
-
+// Bootstrap App
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('Secrecy Launcher')
+  electronApp.setAppUserModelId('Secrecy Minecraft')
 
-  // Buscar y eliminar el archivo portable anterior de forma compacta
-  process.argv.forEach((arg, i) => {
-    if (arg === '--previousfileportable' && process.argv[i + 1]) {
-      const filePath = process.argv[i + 1]
-      fs.unlink(filePath, (err) => {
-        if (!err) console.log(`Archivo portable anterior eliminado: ${filePath}`)
-      })
-    }
-  })
-
-  // Configurar el auto-updater
   setupAutoUpdater()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // Core window/relaunch events
   ipcMain.on('ping', () => log.info('pong'))
-
-  // Handler para instalar la actualización
-  // Reemplazar el handler existente en app.whenReady().then()
   ipcMain.on('install-update', () => {
-    if (isPortable) {
-      log.info('Installing portable update')
-      installPortableUpdate()
-    } else {
-      log.info('Installing regular update')
-      autoUpdater.quitAndInstall()
-    }
+    autoUpdater.quitAndInstall()
   })
-
-  // Variables para controlar descargas pausadas
-  interface PausedDownload {
-    downloader: DownloaderHelper
-    resumeData: any
-  }
-  const pausedDownloads = new Map<number, PausedDownload>()
-
-  ipcMain.on(
-    'installGame',
-    async (
-      event,
-      gameData: {
-        title: string
-        id: number
-        url: string | string[]
-        needExtract: boolean
-        extractPassword?: string
-        executable?: string
-        version: string
-        updateVersion: string
-        updateUrl: string
-        updateExtractPath: string
-        installedVersion: string
-      },
-      update = gameData.version ? gameData.installedVersion !== gameData.version : false
-    ) => {
-      console.log(update)
-      log.info('Installing game:', gameData.title)
-      log.info('Full gameData object:', JSON.stringify(gameData, null, 2))
-      console.log('Full gameData object:', gameData)
-
-      const downloadPath = path.join(getDataPath(), 'game-downloads', gameData.id.toString())
-      const extractPath = path.join(
-        downloadPath,
-        'extracted',
-        update ? gameData.updateExtractPath : ''
-      )
-
-      ensureDirectory(downloadPath)
-      ensureDirectory(extractPath)
-
-      // Función para manejar la descarga de una URL (se mantiene igual)
-      const downloadFile = async (url: string, index?: number, total?: number): Promise<string> => {
-        const message =
-          total !== undefined
-            ? `Descargando parte ${index! + 1} de ${total}`
-            : `Descargando archivos ${update ? 'de la actualización' : 'del juego'}...`
-
-        const dl = new DownloaderHelper(url, downloadPath, {
-          retry: { maxRetries: 3, delay: 3000 },
-          override: true,
-          resumeIfFileExists: true
-        })
-
-        activeDownloads.set(gameData.id, dl)
-
-        dl.on('download', (downloadInfo) => {
-          log.info('Download started:', downloadInfo)
-          event.sender.send('download-started', { id: gameData.id })
-          updateProgressBar(-1)
-        })
-
-        dl.on('progress', (stats) => {
-          const progress = Math.floor(stats.progress)
-          event.sender.send('download-progress', {
-            id: gameData.id,
-            progress: progress,
-            speed: stats.speed,
-            downloaded: stats.downloaded,
-            total: stats.total,
-            message: message,
-            update
-          })
-          updateProgressBar(progress / 100)
-        })
-
-        return new Promise<string>((resolve, reject) => {
-          dl.on('end', (downloadInfo) => {
-            log.info('Download completed:', downloadInfo)
-            resolve(downloadInfo.filePath)
-          })
-
-          dl.on('error', (err) => {
-            log.error('Download error:', err)
-            reject(err)
-          })
-
-          dl.start().catch((err) => {
-            log.error('Error starting download:', err)
-            reject(err)
-          })
-        })
-      }
-
-      try {
-        let filePaths: string[] = []
-
-        if (update && gameData.updateUrl) {
-          filePaths.push(await downloadFile(gameData.updateUrl))
-        } else {
-          // Manejar múltiples URLs o una sola (COMPORTAMIENTO ORIGINAL)
-          if (Array.isArray(gameData.url)) {
-            const totalParts = gameData.url.length
-            for (let i = 0; i < totalParts; i++) {
-              const url = gameData.url[i]
-              if (url) {
-                filePaths.push(await downloadFile(url, i, totalParts))
-              }
-            }
-          } else if (typeof gameData.url === 'string') {
-            filePaths.push(await downloadFile(gameData.url))
-          }
-        }
-
-        activeDownloads.delete(gameData.id)
-
-        if (gameData.needExtract === false) {
-          return event.sender.send('installation-complete', {
-            id: gameData.id,
-            installPath: downloadPath,
-            exePath: filePaths[0], // Devuelve el primer archivo si no hay extracción
-            update: update,
-            version: gameData.version
-          })
-        }
-
-        event.sender.send('installing-progress', {
-          id: gameData.id,
-          stage: 'extracting',
-          progress: 0,
-          message: update
-            ? 'Preparando para actualizar los archivos...'
-            : 'Preparando para instalar archivos...'
-        })
-
-        updateProgressBar(-1)
-
-        const worker = new Worker(path.join(__dirname, '../../resources/extractWorker.js'), {
-          workerData: {
-            gameData,
-            filePaths,
-            extractPath
-          }
-        })
-
-        worker.on('message', (msg) => {
-          if (msg.type === 'progress') {
-            event.sender.send('installing-progress', {
-              id: gameData.id,
-              stage: 'extracting',
-              progress: msg.progress,
-              message: `Procesando: ${msg.fileName}`
-            })
-
-            updateProgressBar(msg.progress / 100)
-          }
-
-          if (msg.type === 'done') {
-            updateProgressBar(1)
-
-            // Limpiar archivos
-            for (const filePath of filePaths) {
-              try {
-                fs.unlinkSync(filePath)
-                log.info(`Archivo eliminado: ${filePath}`)
-              } catch (err) {
-                log.error(`Error al eliminar el archivo ${filePath}:`, err)
-              }
-            }
-
-            const notifyMessage =
-              msg.extractionErrors > 0
-                ? `El juego ${gameData.title} se ${update ? 'actualizó' : 'instaló'}, pero hubo ${msg.extractionErrors} errores durante la extracción.`
-                : `El juego ${gameData.title} se ha ${update ? 'actualizado' : 'instalado'} correctamente.`
-
-            showNotificationIfBackground(
-              msg.extractionErrors > 0
-                ? `${update ? 'Actualización' : 'Instalación'} completada con advertencias`
-                : `${update ? 'Actualización' : 'Instalación'} completada`,
-              notifyMessage
-            )
-
-            event.sender.send('installation-complete', {
-              id: gameData.id,
-              installPath: downloadPath,
-              exePath: gameData.executable
-                ? path.join(extractPath, gameData.executable)
-                : extractPath,
-              update: update,
-              version: gameData.version
-            })
-          }
-        })
-
-        worker.on('error', (err) => {
-          log.error('Worker error:', err)
-          updateProgressBar(-1)
-          event.sender.send('download-error', {
-            id: gameData.id,
-            description: `Error al ${update ? 'actualizar' : 'instalar'} ${gameData.title}`,
-            error: err.message,
-            errorCode: 'EXTRACTION_WORKER_ERROR'
-          })
-        })
-      } catch (error: any) {
-        log.error('Download error:', error)
-        updateProgressBar(-1)
-        event.sender.send('download-error', {
-          id: gameData.id,
-          description: `Error al descargar ${update && 'la actualización de '}${gameData.title}`,
-          error: error.message,
-          errorCode: error.status || 'DOWNLOAD_ERROR'
-        })
-        activeDownloads.delete(gameData.id)
-      }
-    }
-  )
-
-  ipcMain.on('cancelDownload', (event, gameId: number) => {
-    const dl = activeDownloads.get(gameId)
-    if (dl) {
-      dl.stop()
-      activeDownloads.delete(gameId)
-      log.info(`Download canceled for game ID: ${gameId}`)
-      updateProgressBar(-1)
-      event.sender.send('download-status', {
-        id: gameId,
-        status: 'canceled'
-      })
-    }
-  })
-
-  ipcMain.on('pauseDownload', (event, gameId: number) => {
-    const dl = activeDownloads.get(gameId)
-    if (dl) {
-      dl.pause()
-        .then((resumeData) => {
-          pausedDownloads.set(gameId, { downloader: dl, resumeData })
-          activeDownloads.delete(gameId)
-          log.info(`Download paused for game ID: ${gameId}`)
-          updateProgressBar(-1)
-          event.sender.send('download-status', {
-            id: gameId,
-            status: 'paused'
-          })
-        })
-        .catch((err) => {
-          log.error(`Error pausing download for game ID: ${gameId}`, err)
-        })
-    }
-  })
-
-  // Alternativa usando .start() en lugar de .resume()
-  ipcMain.on('resumeDownload', async (event, gameId: number) => {
-    const paused = pausedDownloads.get(gameId)
-    if (!paused) return
-    event.sender.send('download-status', {
-      id: gameId,
-      status: 'resuming',
-      message: 'Reanudando descarga...'
-    })
-    const { downloader } = paused
-    activeDownloads.set(gameId, downloader)
-    pausedDownloads.delete(gameId)
-
-    try {
-      await downloader.start()
-      log.info(`Download resumed successfully for game ID: ${gameId}`)
-    } catch (error) {
-      log.error(`Resume failed for game ID: ${gameId}:`, error)
-      event.sender.send('download-status', {
-        id: gameId,
-        status: 'paused'
-      })
-      event.sender.send('download-error', {
-        id: gameId,
-        error: 'RESUME_FAILED',
-        message: 'No se pudo reanudar la descarga'
-      })
-    }
-  })
-
-  ipcMain.handle('storageGet', (_event, key: string) => {
-    if (typeof key !== 'string') {
-      throw new Error('Invalid key type')
-    }
-    try {
-      return store.get(key)
-    } catch (error) {
-      log.error('Failed to get from store:', error)
-      throw error
-    }
-  })
-
-  ipcMain.handle('storageSet', (_event, key: string, value: unknown) => {
-    if (typeof key !== 'string') {
-      throw new Error('Invalid key type')
-    }
-    try {
-      store.set(key, value)
-      return { success: true }
-    } catch (error) {
-      log.error('Failed to set in store:', error)
-      throw error
-    }
-  })
-
-  ipcMain.handle('uninstallGame', async (_event, installPath: string) => {
-    try {
-      if (!installPath) {
-        throw new Error('No se proporcionó ruta de instalación')
-      }
-
-      if (!fs.existsSync(installPath)) {
-        return { success: true, message: 'La ruta ya no existe' }
-      }
-
-      if (fs.lstatSync(installPath).isDirectory()) {
-        fs.rmdirSync(installPath, { recursive: true })
-      } else {
-        fs.unlinkSync(installPath)
-      }
-
-      return { success: true, message: 'Juego desinstalado correctamente' }
-    } catch (error) {
-      log.error('Error al desinstalar:', error)
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Error desconocido al desinstalar'
-      }
-    }
-  })
-
-  ipcMain.handle('checkGameInstalled', (_event, installPath: string) => {
-    try {
-      if (!installPath) return false
-      return fs.existsSync(installPath)
-    } catch (error) {
-      log.error('Error al verificar instalación:', error)
-      return false
-    }
-  })
-
-  const { spawn, exec } = require('child_process')
-
-  // Función auxiliar para verificar si Steam está en ejecución (Windows)
-  function isSteamRunning(): Promise<boolean> {
-    return new Promise((resolve) => {
-      exec('tasklist', (error, stdout) => {
-        if (error) {
-          log.error('[isSteamRunning] Error al listar procesos:', error)
-          resolve(false)
-        } else {
-          const isRunning = stdout.toLowerCase().includes('steam.exe')
-          resolve(isRunning)
-        }
-      })
-    })
-  }
-
-  ipcMain.on('launchGame', async (event, game: any) => {
-    log.info('[launchGame] Evento recibido. Juego:', game)
-
-    // Ocultar ventana principal al iniciar
-    if (mainWindow) {
-      log.info('[launchGame] Ocultando ventana principal')
-      mainWindow.hide()
-    } else {
-      log.warn('[launchGame] mainWindow no está definido')
-    }
-
-    // --- Verificación de Steam (si es requerido) ---
-    if (game.requireSteam) {
-      log.info('[launchGame] El juego requiere Steam, verificando...')
-
-      try {
-        // 1. Verificar instalación
-        const steamPath = getSteamPath()
-        if (!steamPath) {
-          throw new Error('install') // Lanzar error especial para instalación
-        }
-        log.info('[launchGame] Steam encontrado en:', steamPath)
-
-        // 2. Verificar si está en ejecución
-        const steamRunning = await isSteamRunning()
-        if (!steamRunning) {
-          throw new Error('running') // Lanzar error especial para ejecución
-        }
-        log.info('[launchGame] Steam está en ejecución.')
-      } catch (error: any) {
-        log.error('[launchGame] Error en Steam:', error.message)
-
-        // Determinar el modo requerido
-        const requireSteamMode = error.message.includes('install') ? 'install' : 'running'
-
-        // Enviar respuesta de error
-        event.sender.send('launch-end', {
-          id: game.id,
-          success: false,
-          requireSteam: true,
-          requireSteamMode: requireSteamMode, // 'install' o 'running'
-          error: true,
-          game: game
-        })
-
-        // Mostrar ventana principal si existe
-        if (mainWindow) mainWindow.show()
-        return
-      }
-    }
-
-    // --- Lanzar el juego ---
-    const exePath = game.exePath.includes(' ') ? `"${game.exePath}"` : game.exePath
-    log.info('[launchGame] Iniciando juego:', exePath)
-
-    const appProcess = spawn(exePath, [], {
-      shell: true,
-      detached: false
-    })
-
-    log.info('[launchGame] Proceso del juego PID:', appProcess.pid)
-
-    // Manejo de errores
-    appProcess.on('error', (err) => {
-      log.error('[launchGame] Error al iniciar:', err)
-      if (mainWindow) mainWindow.show()
-      event.sender.send('launch-end', {
-        id: game.id,
-        success: false,
-        error: {
-          title: 'Error al iniciar el juego',
-          description: 'No se pudo ejecutar el archivo del juego',
-          severity: 'error',
-          errorCode: 'GAME_LAUNCH_FAILED',
-          errorDetails: err.message
-        }
-      })
-    })
-
-    // Cuando el juego se cierra
-    appProcess.on('close', (code, signal) => {
-      log.info(`[launchGame] Juego cerrado. Código: ${code}, Señal: ${signal}`)
-      if (mainWindow) mainWindow.show()
-      event.sender.send('launch-end', {
-        id: game.id,
-        success: code === 0,
-        code: code,
-        signal: signal,
-        ...(code !== 0 && {
-          error: {
-            title: 'El juego se cerró inesperadamente',
-            description: `El proceso del juego terminó con código ${code}`,
-            severity: code === 0 ? 'none' : 'critical',
-            errorCode: `GAME_EXIT_${code}`,
-            errorDetails: signal ? `Señal recibida: ${signal}` : ''
-          }
-        })
-      })
-    })
-
-    // Opcional: Logs de consola del juego
-    appProcess.stdout?.on('data', (data) => {
-      log.info(`[launchGame] stdout: ${data.toString().trim()}`)
-    })
-
-    appProcess.stderr?.on('data', (data) => {
-      log.error(`[launchGame] stderr: ${data.toString().trim()}`)
-    })
-  })
-
-  // Función auxiliar para encontrar la instalación de Steam
-  function getSteamPath(): string | null {
-    // Solo verificar rutas de Windows
-    const winPaths = [
-      process.env['ProgramFiles(x86)'] + '\\Steam\\steam.exe',
-      process.env.ProgramFiles + '\\Steam\\steam.exe',
-      'C:\\Program Files (x86)\\Steam\\steam.exe',
-      'C:\\Program Files\\Steam\\steam.exe'
-    ]
-
-    for (const steamPath of winPaths) {
-      try {
-        if (fs.existsSync(steamPath)) {
-          return steamPath
-        }
-      } catch (e) {
-        log.warn(`[getSteamPath] Error al verificar ruta ${steamPath}:`, e)
-      }
-    }
-    return null
-  }
-
-  ipcMain.handle('open-steam', async (): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const steamPath = getSteamPath()
-      if (!steamPath) {
-        return { success: false, error: 'Steam no está instalado' }
-      }
-
-      // 1. Iniciar Steam minimizado
-      const command = `"${steamPath}" -silent -nochatui`
-      spawn(command, [], {
-        shell: true,
-        detached: true,
-        windowsHide: true
-      })
-
-      // 2. Esperar a que Steam esté completamente inicializado
-      const isReady = await waitForFullSteamStart(15000) // 15 segundos máximo
-      return {
-        success: isReady,
-        error: isReady ? undefined : 'Steam no completó su inicialización'
-      }
-    } catch (error: any) {
-      return { success: false, error: error.message }
-    }
-  })
-
-  // Función mejorada de espera
-  async function waitForFullSteamStart(timeout: number): Promise<boolean> {
-    const startTime = Date.now()
-
-    while (Date.now() - startTime < timeout) {
-      // Verificar tanto el proceso como la ventana principal
-      const [processRunning, windowExists] = await Promise.all([
-        isSteamRunning(),
-        checkSteamWindowExists()
-      ])
-
-      if (processRunning && windowExists) {
-        return true // Steam completamente inicializado
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 500)) // Polling cada 500ms
-    }
-
-    return false // Timeout alcanzado
-  }
-
-  // Verifica si existe la ventana principal de Steam (Windows API)
-  async function checkSteamWindowExists(): Promise<boolean> {
-    try {
-      const { execSync } = require('child_process')
-      const stdout = execSync(
-        'tasklist /FI "IMAGENAME eq steam.exe" /FI "WINDOWTITLE ne N/A" /NH'
-      ).toString()
-      return stdout.includes('steam.exe')
-    } catch {
-      return false
-    }
-  }
-
-  ipcMain.on('install-steam', async (event) => {
-    log.info('Starting Steam installation')
-
-    const downloadPath = path.join(getDataPath(), 'steam-install')
-    const steamUrl = 'https://cdn.fastly.steamstatic.com/client/installer/SteamSetup.exe'
-
-    ensureDirectory(downloadPath)
-
-    const dl = new DownloaderHelper(steamUrl, downloadPath, {
-      retry: { maxRetries: 3, delay: 3000 },
-      override: true,
-      fileName: 'SteamSetup.exe'
-    })
-
-    // Eventos de descarga
-    dl.on('download', () => {
-      log.info('Steam download started')
-      event.sender.send('steam-download-started')
-    })
-
-    dl.on('progress', (stats) => {
-      const progress = Math.floor(stats.progress)
-      event.sender.send('steam-download-progress', {
-        progress,
-        speed: stats.speed,
-        downloaded: stats.downloaded,
-        total: stats.total
-      })
-    })
-
-    dl.on('end', async (downloadInfo) => {
-      log.info('Steam download completed')
-      event.sender.send('steam-download-complete')
-
-      try {
-        log.info('Steam installation complete')
-        event.sender.send('steam-install-complete', {
-          installPath: downloadPath,
-          executablePath: downloadInfo.filePath
-        })
-        const exePath = downloadInfo.filePath.includes(' ')
-          ? `"${downloadInfo.filePath}"`
-          : downloadInfo.filePath
-        spawn(exePath, [], {
-          shell: true,
-          detached: false // Opcional: para que el proceso no dependa del padre
-        })
-      } catch (error: any) {
-        log.error('Steam installation error:', error)
-        event.sender.send('steam-install-error', {
-          error: error.message || 'Error durante la instalación'
-        })
-      }
-    })
-
-    dl.on('error', (err) => {
-      log.error('Steam download error:', err)
-      event.sender.send('steam-download-error', {
-        error: err.message
-      })
-    })
-
-    try {
-      await dl.start()
-    } catch (err: any) {
-      log.error('Error starting Steam download:', err)
-      event.sender.send('steam-download-error', {
-        error: err.message
-      })
-    }
-  })
-
-  async function getTemurin8ReleaseInfo(javaVer) {
-    const arch = os.arch()
-    const is64Bit = arch === 'x64' || arch === 'amd64'
-    const architecture = is64Bit ? 'x64' : 'x86-32'
-
-    try {
-      // Primero intentamos con el último release
-      const latestResponse = await fetch(
-        `https://api.github.com/repos/adoptium/temurin${javaVer}-binaries/releases/latest`
-      )
-      if (!latestResponse.ok) throw new Error('Error al obtener el último release')
-
-      const latestRelease = await latestResponse.json()
-      const assetInfo = findCompatibleAsset(latestRelease, architecture, javaVer)
-
-      if (assetInfo) {
-        return [
-          {
-            javaVer,
-            downloadUrl: assetInfo.downloadUrl,
-            directoryName: latestRelease.tag_name
-          }
-        ]
-      }
-
-      // Si no encontramos en el último release, buscamos en los anteriores
-      console.log(
-        'No se encontró binario compatible en el último release, buscando en anteriores...'
-      )
-      const allReleasesResponse = await fetch(
-        `https://api.github.com/repos/adoptium/temurin${javaVer}-binaries/releases`
-      )
-      if (!allReleasesResponse.ok) throw new Error('Error al obtener todos los releases')
-
-      const allReleases = await allReleasesResponse.json()
-
-      for (const release of allReleases) {
-        const assetInfo = findCompatibleAsset(release, architecture, javaVer)
-        if (assetInfo) {
-          return [
-            {
-              javaVer,
-              downloadUrl: assetInfo.downloadUrl,
-              directoryName: release.tag_name
-            }
-          ]
-        }
-      }
-
-      throw new Error('No se encontró ningún release con binario compatible')
-    } catch (error: any) {
-      console.error('Error:', error.message)
-      return getFallbackReleaseInfo(architecture)
-    }
-  }
-
-  function findCompatibleAsset(release, architecture, javaVer) {
-    const compatibleAsset = release.assets.find((asset) => {
-      return (
-        asset.name.includes(`OpenJDK${javaVer}U-jdk`) &&
-        asset.name.includes(`${architecture}_windows`) &&
-        asset.name.includes('hotspot') &&
-        asset.name.endsWith('.zip')
-      )
-    })
-
-    return compatibleAsset ? { downloadUrl: compatibleAsset.browser_download_url } : null
-  }
-
-  function getFallbackReleaseInfo(architecture) {
-    // Datos de fallback conocidos
-    const fallbackReleases = {
-      x64: {
-        version: 'jdk8u302-b08',
-        url: 'https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u302-b08/OpenJDK8U-jdk_x64_windows_hotspot_8u302b08.zip'
-      },
-      'x86-32': {
-        version: 'jdk8u292-b10',
-        url: 'https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u292-b10/OpenJDK8U-jdk_x86-32_windows_hotspot_8u292b10.zip'
-      }
-    }
-
-    const fallback = fallbackReleases[architecture] || fallbackReleases['x64']
-
-    return [
-      {
-        downloadUrl: fallback.url,
-        directoryName: fallback.version
-      }
-    ]
-  }
-
-  async function getJava(javaVer = 17) {
-    if (store.get(`javaExePath.${javaVer}`)) {
-      return store.get(`javaExePath.${javaVer}`)
-    } else {
-      const [releaseInfo] = await getTemurin8ReleaseInfo(javaVer)
-      const extractPath = path.join(getDataPath(), 'java')
-
-      return new Promise((resolve, reject) => {
-        const worker = new Worker(path.join(__dirname, '../../resources/javaWorker.js'), {
-          workerData: {
-            downloadUrl: releaseInfo.downloadUrl,
-            extractPath,
-            directoryName: releaseInfo.directoryName
-          }
-        })
-
-        worker.on('message', (message) => {
-          switch (message.type) {
-            case 'download-progress':
-              //console.log(`Descargando: ${message.progress}%`)
-              mainWindow?.webContents.send('minecraft-status', {
-                stage: 'downloading-java',
-                progress: message.progress,
-                message: `Descargando Java ${message.progress}%`
-              })
-              break
-            case 'extract-progress':
-              console.log(`Extrayendo ${message.fileName}/${message.totalFiles}`)
-              mainWindow?.webContents.send('minecraft-status', {
-                stage: 'installing-java',
-                progress: 100,
-                message: 'Instalando java...'
-              })
-              break
-            case 'done':
-              console.log(message.javaPath)
-              const newJavaPath = message.javaPath
-              store.set(`javaExePath.${javaVer}`, newJavaPath)
-              console.log(`Java instalado en: ${newJavaPath}`)
-              mainWindow?.webContents.send('minecraft-status', {
-                stage: 'completed-java',
-                progress: 0,
-                message: 'Java instalado correctamente'
-              })
-              resolve(newJavaPath)
-              break
-            case 'error':
-              console.error(`Error en ${message.stage}: ${message.error}`)
-              reject(new Error(message.error))
-              break
-          }
-        })
-
-        worker.on('error', (err) => reject(err))
-        worker.on('exit', (code) => {
-          if (code !== 0) {
-            reject(new Error(`Worker exited with code: ${code}`))
-          }
-        })
-      })
-    }
-  }
-
-  const launcher = new Client()
-  // Crear un nuevo administrador de autenticación
-  const authManager = new Auth('select_account')
-
-  ipcMain.handle('minecraftLogin', async () => {
-    try {
-      const xboxManager = await authManager.launch('electron')
-      const minecraftData = await xboxManager.getMinecraft()
-      console.log(minecraftData.mclc())
-      store.set('minecraft.auth', minecraftData.mclc())
-      store.set('minecraft.profile', minecraftData.profile)
-      return minecraftData.profile?.name
-    } catch (error) {
-      console.error('Error durante el inicio de sesión:', error)
-      throw error // Importante: re-lanzar para que el renderer lo maneje
-    }
-  })
-
-  // Lanzar la ventana de inicio de sesión usando el framework 'raw' (puede ser 'electron' o 'nwjs')
-
-  const currentPaths = {
-    appData: app.getPath('appData'),
-    userData: app.getPath('userData')
-  }
-
-  store.set('paths.appData', currentPaths.appData)
-  store.set('paths.userData', currentPaths.userData)
-
-  ipcMain.on('launch-minecraft', async () => {
-    const minecraftDir = store.get('paths.minecraft') as string
-
-    try {
-      // Verificar conexión a internet
-      const isOnline = await checkInternetConnection()
-
-      if (!isOnline) {
-        // Verificar si todos los archivos necesarios están presentes
-        const selectedVersion = store.get('minecraft.settings.selectedVersion') as {
-          type: string
-          id: string
-          inheritsFrom?: string
-        }
-
-        const versionId =
-          selectedVersion.type === 'custom' ? selectedVersion.inheritsFrom! : selectedVersion.id
-
-        const versionPath = path.join(minecraftDir, 'versions', versionId)
-        const jarPath = path.join(versionPath, `${versionId}.jar`)
-
-        if (!fs.existsSync(jarPath)) {
-          mainWindow?.webContents.send('minecraft-error', {
-            message: 'No hay conexión a internet',
-            error:
-              'No se puede lanzar Minecraft sin conexión porque faltan archivos. Por favor, conéctate a internet primero.'
-          })
-          return
-        }
-      }
-
-      const javaPath = (await getJava(21)) as string
-      console.log('Java encontrado en:', javaPath)
-      const userAccount = store.get('minecraft.userAccount') as {
-        type: string
-        username: string
-      }
-      const premiumSession = store.get('minecraft.auth') as any
-      const selectedVersion = store.get('minecraft.settings.selectedVersion') as {
-        type: string
-        id: string
-        inheritsFrom?: string
-      }
-      const memoryAllocation = store.get('minecraft.settings.memoryAllocation') as [number, number]
-
-      const opts: any = {
-        authorization:
-          userAccount.type === 'premium'
-            ? premiumSession
-            : Authenticator.getAuth(userAccount.username ?? 'Player'),
-
-        root: minecraftDir,
-        javaPath: javaPath,
-        version:
-          selectedVersion.type === 'custom'
-            ? {
-                number: selectedVersion.inheritsFrom!,
-                custom: selectedVersion.id,
-                type: 'Secrecy'
-              }
-            : {
-                number: selectedVersion.id,
-                type: selectedVersion.type
-              },
-        memory: {
-          min: memoryAllocation[0],
-          max: memoryAllocation[1]
-        },
-        // Agregar configuración offline si no hay internet
-        offline: !isOnline
-      }
-
-      // Opcionales, si tienen valor
-
-      const quickPlayType = store.get('minecraft.settings.quickPlayType') as
-        | 'singleplayer'
-        | 'multiplayer'
-        | 'realms'
-        | 'legacy'
-        | undefined
-
-      const quickPlayIdentifier = store.get('minecraft.settings.quickPlayIdentifier') as string
-
-      if (quickPlayType && quickPlayIdentifier) {
-        opts.quickPlay = {
-          type: quickPlayType,
-          identifier: quickPlayIdentifier
-        }
-      }
-
-      const fullscreen = store.get('minecraft.settings.fullscreen')
-      const windowWidth = store.get('minecraft.settings.windowWidth')
-      const windowHeight = store.get('minecraft.settings.windowHeight')
-
-      if (fullscreen !== undefined && windowWidth && windowHeight) {
-        opts.window = {
-          fullscreen: fullscreen as boolean,
-          width: windowWidth as number,
-          height: windowHeight as number
-        }
-      }
-
-      const proxyHost = store.get('minecraft.settings.proxyHost') as string
-      const proxyPort = store.get('minecraft.settings.proxyPort') as string
-      const proxyUsername = store.get('minecraft.settings.proxyUsername') as string
-      const proxyPassword = store.get('minecraft.settings.proxyPassword') as string
-
-      if (proxyHost && proxyPort) {
-        opts.proxy = {
-          host: proxyHost,
-          port: proxyPort,
-          username: proxyUsername || undefined,
-          password: proxyPassword || undefined
-        }
-      }
-
-      const timeout = store.get('minecraft.settings.minecraftTimeout')
-      if (timeout !== undefined && timeout !== null) {
-        opts.timeout = timeout as number
-      }
-
-      const customLaunchArgs = store.get('minecraft.settings.customMcArgs')
-      if (Array.isArray(customLaunchArgs) && customLaunchArgs.length > 0) {
-        opts.customLaunchArgs = customLaunchArgs
-      }
-
-      const customJavaArgs = store.get('minecraft.settings.customJavaArgs')
-      if (Array.isArray(customJavaArgs) && customJavaArgs.length > 0) {
-        opts.customArgs = customJavaArgs
-      }
-
-      function launchMinecraft() {
-        launcher.launch(opts)
-        launcher.on('debug', (data) => console.log('Minecraft debug:', data))
-        launcher.on('data', (data) => console.log('Minecraft data:', data))
-        launcher.on('progress', (e) => {
-          mainWindow?.webContents.send('minecraft-status', {
-            stage: 'installing-minecraft',
-            progress: (e.task / e.total) * 100,
-            message:
-              'Cargando archivos de Minecraft... ' + ((e.task / e.total) * 100).toFixed(0) + '%'
-          })
-        })
-        launcher.on('arguments', () => {
-          mainWindow?.webContents.send('minecraft-status', {
-            stage: 'launching',
-            message: 'Iniciando..'
-          })
-          mainWindow?.hide()
-        })
-        launcher.on('close', () => {
-          mainWindow?.show()
-          mainWindow?.webContents.send('minecraft-status', { stage: 'closed' })
-        })
-      }
-
-      launchMinecraft()
-    } catch (error) {
-      console.error('Error al lanzar Minecraft:', error)
-      if (mainWindow) {
-        mainWindow.show()
-        mainWindow.webContents.send('minecraft-error', {
-          message: 'Error al lanzar Minecraft',
-          error: error instanceof Error ? error.message : String(error)
-        })
-      }
-    }
-  })
-
-  ipcMain.on('launch-server', async () => {
-    const serverDataUrl = 'https://secrecyfiles.github.io/fileshoster/secrecyserver/data.json'
-    const minecraftDir = path.join(getDataPath(), 'secrecy-server')
-
-    // Asegurarse de que el directorio existe
-    ensureDirectory(minecraftDir)
-
-    try {
-      // 1. Obtener información del servidor
-      const response = await fetch(serverDataUrl)
-      if (!response.ok) {
-        throw new Error('No se pudo obtener la información del servidor')
-      }
-      const serverData = await response.json()
-
-      // 2. Verificar si necesitamos descargar la nueva versión
-      const storedVersion = store.get('minecraft.server.version')
-      const needsDownload = storedVersion !== serverData.version
-
-      if (needsDownload) {
-        mainWindow?.webContents.send('minecraft-status', {
-          stage: 'downloading-server',
-          progress: 0,
-          message: 'Descargando archivos del servidor...'
-        })
-
-        // 3. Descargar el archivo comprimido
-        const downloadPath = path.join(minecraftDir, 'server.rar')
-        const dl = new DownloaderHelper(serverData.fileUrl, minecraftDir, {
-          fileName: 'server.rar',
-          override: true,
-          retry: { maxRetries: 3, delay: 3000 }
-        })
-
-        // Eventos de progreso de descarga
-        dl.on('progress', (stats) => {
-          const progress = Math.floor(stats.progress)
-          mainWindow?.webContents.send('minecraft-status', {
-            stage: 'downloading-server',
-            progress: progress,
-            message: `Descargando paquetes del servidor... ${progress}%`
-          })
-        })
-
-        await new Promise((resolve, reject) => {
-          dl.on('end', () => {
-            mainWindow?.webContents.send('minecraft-status', {
-              stage: 'extracting-server',
-              progress: 0,
-              message: 'Extrayendo archivos...'
-            })
-            resolve(true)
-          })
-          dl.on('error', reject)
-          dl.start().catch(reject)
-        })
-
-        // 4. Extraer el archivo
-        const worker = new Worker(path.join(__dirname, '../../resources/extractWorker.js'), {
-          workerData: {
-            filePaths: [downloadPath],
-            extractPath: minecraftDir,
-            deleteAfter: true
-          }
-        })
-
-        await new Promise((resolve, reject) => {
-          worker.on('message', (msg) => {
-            if (msg.type === 'progress') {
-              mainWindow?.webContents.send('minecraft-status', {
-                stage: 'extracting-server',
-                progress: msg.progress,
-                message: `Extrayendo archivos... ${msg.progress}%`
-              })
-            }
-            if (msg.type === 'done') {
-              // Eliminar el archivo RAR después de la extracción
-              try {
-                fs.unlinkSync(downloadPath)
-                console.log('Archivo RAR eliminado después de la extracción')
-              } catch (err) {
-                console.error('Error al eliminar el archivo RAR:', err)
-              }
-              resolve(true)
-            }
-          })
-          worker.on('error', (err) => {
-            console.error('Error en el worker de extracción:', err)
-            reject(err)
-          })
-          worker.on('exit', (code) => {
-            if (code !== 0) {
-              console.error(`Worker de extracción terminó con código ${code}`)
-              reject(new Error(`Worker exited with code ${code}`))
-            }
-          })
-        })
-
-        // 5. Actualizar la versión almacenada
-        store.set('minecraft.server.version', serverData.version)
-      }
-
-      // 6. Lanzar el servidor (código existente)
-      const javaPath = (await getJava(21)) as string
-      console.log('Java encontrado en:', javaPath)
-      const userAccount = store.get('minecraft.userAccount') as {
-        type: string
-        username: string
-      }
-      const premiumSession = store.get('minecraft.auth') as any
-      const memoryAllocation = store.get('minecraft.settings.memoryAllocation') as [number, number]
-
-      const opts: any = {
-        authorization:
-          userAccount.type === 'premium'
-            ? premiumSession
-            : Authenticator.getAuth(userAccount.username ?? 'Player'),
-        root: minecraftDir,
-        javaPath: javaPath,
-        version: {
-          number: '1.21.1',
-          type: 'release'
-        },
-        memory: {
-          min: memoryAllocation[0],
-          max: memoryAllocation[1]
-        },
-        forge: minecraftDir + '\\versions\\neoforge-21.1.213-installer.jar'
-      }
-
-      function launchMinecraft() {
-        launcher.launch(opts)
-        launcher.on('debug', (data) => console.log('Minecraft debug:', data))
-        launcher.on('data', (data) => console.log('Minecraft data:', data))
-        launcher.on('progress', (e) => {
-          mainWindow?.webContents.send('minecraft-status', {
-            stage: 'installing-minecraft',
-            progress: (e.task / e.total) * 100,
-            message:
-              'Cargando archivos de Minecraft... ' + ((e.task / e.total) * 100).toFixed(0) + '%'
-          })
-        })
-        launcher.on('arguments', () => {
-          mainWindow?.webContents.send('minecraft-status', {
-            stage: 'launching',
-            message: 'Iniciando..'
-          })
-          mainWindow?.hide()
-        })
-        launcher.on('close', () => {
-          mainWindow?.show()
-          mainWindow?.webContents.send('minecraft-status', { stage: 'closed' })
-        })
-      }
-
-      launchMinecraft()
-    } catch (error) {
-      console.error('Error al lanzar el servidor:', error)
-      if (mainWindow) {
-        mainWindow.show()
-        mainWindow.webContents.send('minecraft-error', {
-          message: 'Error al lanzar el servidor',
-          error: error instanceof Error ? error.message : String(error)
-        })
-      }
-    }
-  })
-
-  ipcMain.on('launch-offline', async () => {
-    const serverDataUrl = 'https://secrecyfiles.github.io/fileshoster/secrecyserver/data.json'
-    const minecraftDir = path.join(getDataPath(), 'secrecy-offline')
-
-    // Asegurarse de que el directorio existe
-    ensureDirectory(minecraftDir)
-
-    try {
-      // 1. Obtener información del servidor
-      const response = await fetch(serverDataUrl)
-      if (!response.ok) {
-        throw new Error('No se pudo obtener la información del servidor')
-      }
-      const serverData = await response.json()
-
-      // 2. Verificar si necesitamos descargar la nueva versión
-      const storedVersion = store.get('minecraft.offline.version')
-      const needsDownload = storedVersion !== serverData.offlineVersion
-
-      if (needsDownload) {
-        mainWindow?.webContents.send('minecraft-status', {
-          stage: 'downloading-server',
-          progress: 0,
-          message: 'Descargando archivos del servidor...'
-        })
-
-        // 3. Descargar el archivo comprimido
-        const downloadPath = path.join(minecraftDir, 'server.rar')
-        const dl = new DownloaderHelper(serverData.offlineFileUrl, minecraftDir, {
-          fileName: 'server.rar',
-          override: true,
-          retry: { maxRetries: 3, delay: 3000 }
-        })
-
-        // Eventos de progreso de descarga
-        dl.on('progress', (stats) => {
-          const progress = Math.floor(stats.progress)
-          mainWindow?.webContents.send('minecraft-status', {
-            stage: 'downloading-server',
-            progress: progress,
-            message: `Descargando paquetes del servidor... ${progress}%`
-          })
-        })
-
-        await new Promise((resolve, reject) => {
-          dl.on('end', () => {
-            mainWindow?.webContents.send('minecraft-status', {
-              stage: 'extracting-server',
-              progress: 0,
-              message: 'Extrayendo archivos...'
-            })
-            resolve(true)
-          })
-          dl.on('error', reject)
-          dl.start().catch(reject)
-        })
-
-        // 4. Extraer el archivo
-        const worker = new Worker(path.join(__dirname, '../../resources/extractWorker.js'), {
-          workerData: {
-            filePaths: [downloadPath],
-            extractPath: minecraftDir,
-            deleteAfter: true
-          }
-        })
-
-        await new Promise((resolve, reject) => {
-          worker.on('message', (msg) => {
-            if (msg.type === 'progress') {
-              mainWindow?.webContents.send('minecraft-status', {
-                stage: 'extracting-server',
-                progress: msg.progress,
-                message: `Extrayendo archivos... ${msg.progress}%`
-              })
-            }
-            if (msg.type === 'done') {
-              // Eliminar el archivo RAR después de la extracción
-              try {
-                fs.unlinkSync(downloadPath)
-                console.log('Archivo RAR eliminado después de la extracción')
-              } catch (err) {
-                console.error('Error al eliminar el archivo RAR:', err)
-              }
-              resolve(true)
-            }
-          })
-          worker.on('error', (err) => {
-            console.error('Error en el worker de extracción:', err)
-            reject(err)
-          })
-          worker.on('exit', (code) => {
-            if (code !== 0) {
-              console.error(`Worker de extracción terminó con código ${code}`)
-              reject(new Error(`Worker exited with code ${code}`))
-            }
-          })
-        })
-
-        // 5. Actualizar la versión almacenada
-        store.set('minecraft.offline.version', serverData.offlineVersion)
-      }
-
-      // 6. Lanzar el servidor (código existente)
-      const javaPath = (await getJava(21)) as string
-      console.log('Java encontrado en:', javaPath)
-      const userAccount = store.get('minecraft.userAccount') as {
-        type: string
-        username: string
-      }
-      const premiumSession = store.get('minecraft.auth') as any
-      const memoryAllocation = store.get('minecraft.settings.memoryAllocation') as [number, number]
-
-      const opts: any = {
-        authorization:
-          userAccount.type === 'premium'
-            ? premiumSession
-            : Authenticator.getAuth(userAccount.username ?? 'Player'),
-        root: minecraftDir,
-        javaPath: javaPath,
-        version: {
-          number: '1.21.1',
-          type: 'release'
-        },
-        memory: {
-          min: memoryAllocation[0],
-          max: memoryAllocation[1]
-        }
-      }
-
-      function launchMinecraft() {
-        launcher.launch(opts)
-        launcher.on('debug', (data) => console.log('Minecraft debug:', data))
-        launcher.on('data', (data) => console.log('Minecraft data:', data))
-        launcher.on('progress', (e) => {
-          mainWindow?.webContents.send('minecraft-status', {
-            stage: 'installing-minecraft',
-            progress: (e.task / e.total) * 100,
-            message:
-              'Cargando archivos de Minecraft... ' + ((e.task / e.total) * 100).toFixed(0) + '%'
-          })
-        })
-        launcher.on('arguments', () => {
-          mainWindow?.webContents.send('minecraft-status', {
-            stage: 'launching',
-            message: 'Iniciando..'
-          })
-          mainWindow?.hide()
-        })
-        launcher.on('close', () => {
-          mainWindow?.show()
-          mainWindow?.webContents.send('minecraft-status', { stage: 'closed' })
-        })
-      }
-
-      launchMinecraft()
-    } catch (error) {
-      console.error('Error al lanzar el servidor:', error)
-      if (mainWindow) {
-        mainWindow.show()
-        mainWindow.webContents.send('minecraft-error', {
-          message: 'Error al lanzar el servidor',
-          error: error instanceof Error ? error.message : String(error)
-        })
-      }
-    }
-  })
-
-  ipcMain.handle('fetchGameData', async () => {
-    log.info('Fetching game data...')
-    try {
-      const response = await fetch(
-        'https://secrecyfiles.github.io/fileshoster/secrecylauncher/data.json'
-      )
-      if (!response.ok) {
-        throw new Error('No se pudo cargar los datos de los juegos')
-      }
-      const data = await response.json()
-      return data
-    } catch (err) {
-      console.error('Error al cargar los datos:', err)
-      throw err
-    }
-  })
-
-  ipcMain.handle('fetchMinecraftNews', async () => {
-    log.info('Fetching game data...')
-    try {
-      const response = await fetch(
-        'https://net-secondary.web.minecraft-services.net/api/v1.0/es-es/search?pageSize=24&sortType=Recent&category=News'
-      )
-      if (!response.ok) {
-        throw new Error('No se pudo cargar los datos de los juegos')
-      }
-      const data = await response.json()
-      return data
-    } catch (err) {
-      console.error('Error al cargar los datos:', err)
-      throw err
-    }
-  })
-
-  // Interfaces para los tipos de datos
-  interface MojangVersion {
-    id: string
-    type: 'release' | 'snapshot' | 'old_beta' | 'old_alpha'
-    url: string
-    time: string
-    releaseTime: string
-    sha1: string
-    complianceLevel: number
-  }
-
-  interface MojangManifest {
-    latest: {
-      release: string
-      snapshot: string
-    }
-    versions: MojangVersion[]
-  }
-
-  interface VersionInfo {
-    id: string
-    type: 'release' | 'snapshot' | 'custom'
-    releaseTime?: string
-    isLatestRelease?: boolean
-    isLatestSnapshot?: boolean
-    isInstalled?: boolean
-    inheritsFrom?: string
-  }
-
-  interface VersionManifest {
-    versions: VersionInfo[]
-  }
-
-  interface CustomVersionJson {
-    inheritsFrom?: string
-    [key: string]: any
-  }
-
-  ipcMain.handle('fetchMinecraftVersions', async (): Promise<VersionManifest> => {
-    try {
-      console.log('Fetching Minecraft version data...')
-
-      const versionsDir = path.join(store.get('paths.minecraft') as string, '/versions')
-      console.log(versionsDir)
-
-      const installedVersions: string[] = []
-      const customVersions: VersionInfo[] = []
-
-      // 1. SIEMPRE leer versiones instaladas (funciona sin internet)
-      if (fs.existsSync(versionsDir)) {
-        const versionFolders = fs.readdirSync(versionsDir)
-
-        for (const folder of versionFolders) {
-          const versionJsonPath = path.join(versionsDir, folder, `${folder}.json`)
-
-          if (fs.existsSync(versionJsonPath)) {
-            try {
-              const versionData: CustomVersionJson = JSON.parse(
-                fs.readFileSync(versionJsonPath, 'utf-8')
-              )
-
-              if (versionData.inheritsFrom) {
-                // Es una versión personalizada (modloader)
-                customVersions.push({
-                  id: folder,
-                  type: 'custom',
-                  inheritsFrom: versionData.inheritsFrom
-                })
-              } else {
-                // Es una versión oficial instalada
-                installedVersions.push(folder)
-              }
-            } catch (e) {
-              console.error(`Error reading version ${folder}:`, e)
-            }
-          }
-        }
-      }
-
-      // 2. Intentar obtener manifest oficial (PUEDE FALLAR sin internet)
-      let manifest: MojangManifest | null = null
-      let isOnline = true
-
-      try {
-        const manifestResponse = await fetch(
-          'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json',
-          { signal: AbortSignal.timeout(5000) } // 5 segundos timeout
-        )
-        if (manifestResponse.ok) {
-          manifest = (await manifestResponse.json()) as MojangManifest
-        }
-      } catch (error) {
-        console.warn('No se pudo obtener el manifest de Mojang (modo offline):', error)
-        isOnline = false
-      }
-
-      // VALIDACIÓN: Si no hay versiones instaladas Y no hay conexión, lanzar error
-      if (installedVersions.length === 0 && customVersions.length === 0 && !isOnline) {
-        throw new Error(
-          'No se pueden obtener versiones de Minecraft: no hay versiones instaladas y no hay conexión a internet'
-        )
-      }
-
-      // 3. Procesar y combinar los datos
-      const result: VersionManifest = {
-        versions: []
-      }
-
-      if (manifest && isOnline) {
-        // MODO ONLINE: Usar manifest oficial
-        const officialVersions: VersionInfo[] = manifest.versions.map((v) => ({
-          id: v.id,
-          type: v.type === 'release' || v.type === 'snapshot' ? v.type : 'release',
-          releaseTime: v.releaseTime
-            ? new Date(v.releaseTime).toLocaleDateString('es-ES')
-            : undefined,
-          isLatestRelease: v.id === manifest!.latest.release,
-          isLatestSnapshot: v.id === manifest!.latest.snapshot,
-          isInstalled: installedVersions.includes(v.id)
-        }))
-
-        officialVersions.sort(
-          (a, b) => new Date(b.releaseTime || 0).getTime() - new Date(a.releaseTime || 0).getTime()
-        )
-
-        result.versions.push(...officialVersions)
-      } else {
-        // MODO OFFLINE: Usar solo versiones instaladas
-        console.log('Modo offline: mostrando solo versiones instaladas')
-
-        const localVersions: VersionInfo[] = installedVersions.map((id) => ({
-          id,
-          type: 'release' as const,
-          isInstalled: true
-        }))
-
-        result.versions.push(...localVersions)
-      }
-
-      // 4. Procesar versiones personalizadas (SIEMPRE)
-      customVersions.forEach((custom) => {
-        const parentIndex = custom.inheritsFrom
-          ? result.versions.findIndex((v) => v.id === custom.inheritsFrom)
-          : -1
-
-        if (parentIndex >= 0) {
-          result.versions.splice(parentIndex + 1, 0, {
-            id: custom.id,
-            type: 'custom',
-            inheritsFrom: custom.inheritsFrom,
-            isInstalled: true
-          })
-        } else {
-          result.versions.push({
-            id: custom.id,
-            type: 'custom',
-            inheritsFrom: custom.inheritsFrom,
-            isInstalled: true
-          })
-        }
-      })
-
-      return result
-    } catch (err) {
-      console.error('Error loading version data:', err)
-      throw err // Propagar el error en lugar de devolver lista vacía
-    }
-  })
-
-  ipcMain.on('open-external', (_, url: string) => {
-    if (url && typeof url === 'string') {
-      shell.openExternal(url)
-    }
-  })
-
-  // Handler para verificar si existe la unidad D:
-  ipcMain.handle('check-d-drive', async () => {
-    try {
-      const dDrivePath = 'D:\\'
-      const exists = fs.existsSync(dDrivePath)
-      log.info(`D: drive check: ${exists}`)
-      return { exists }
-    } catch (error) {
-      log.error('Error checking D: drive:', error)
-      return { exists: false }
-    }
-  })
-
-  // Handler para configurar la ruta personalizada
-  ipcMain.handle('setup-custom-path', async () => {
-    try {
-      const customPath = 'D:\\SecrecyLauncher'
-      const configPath = path.join(customPath, 'config.json')
-
-      // Crear el directorio si no existe
-      if (!fs.existsSync(customPath)) {
-        fs.mkdirSync(customPath, { recursive: true })
-        log.info(`Created custom path: ${customPath}`)
-      }
-
-      // Crear el config.json con la flag
-      const configData = {
-        advertseen: {
-          relocatedata: true
-        }
-      }
-
-      fs.writeFileSync(configPath, JSON.stringify(configData, null, 2), 'utf-8')
-      log.info(`Created config.json at: ${configPath}`)
-
-      return { success: true, path: customPath }
-    } catch (error: any) {
-      log.error('Error setting up custom path:', error)
-      throw new Error(`Failed to setup custom path: ${error.message}`)
-    }
-  })
-
-  // Handler para reiniciar la aplicación
   ipcMain.on('restart-app', () => {
-    log.info('Restarting application...')
     app.relaunch()
     app.exit(0)
   })
 
+  // Storage bindings (fallback helpers for renderer)
+  ipcMain.handle('storageGet', (_, key: string) => ConfigStore.get(key))
+  ipcMain.handle('storageSet', (_, key: string, value: any) => ConfigStore.set(key, value))
+
+  // Minecraft Auth IPCs
+  ipcMain.handle('minecraftLogin', async () => {
+    return await AuthManager.loginMicrosoft()
+  })
+
+  // Minecraft Launcher IPCs
+  ipcMain.on('launch-minecraft', () => {
+    MinecraftLauncher.launchMinecraft(mainWindow)
+  })
+  ipcMain.handle('fetchMinecraftVersions', async () => {
+    return await MinecraftLauncher.getVersions()
+  })
+
+  // Java Portable Manager IPCs
+  ipcMain.handle('get-available-java-versions', async () => {
+    return await JavaManager.getAvailableJavaReleases()
+  })
+  ipcMain.handle('get-installed-java', async () => {
+    return await JavaManager.getInstalledJavaRuntimes()
+  })
+  ipcMain.handle('download-java-version', async (_, data: any) => {
+    const { major, type, vendor } = data || {}
+    return await JavaManager.downloadJava(major, type, vendor, mainWindow)
+  })
+  ipcMain.handle('delete-java-version', async (_, data: any) => {
+    const { id } = data || {}
+    return await JavaManager.deleteJavaRuntime(id)
+  })
+  ipcMain.handle('select-java-file', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Seleccionar ejecutable de Java (javaw.exe)',
+      filters: [{ name: 'Java Executable', extensions: ['exe'] }],
+      properties: ['openFile']
+    })
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0]
+    }
+    return null
+  })
+  ipcMain.handle('select-minecraft-directory', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Seleccionar Carpeta de Minecraft (.minecraft)',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0]
+    }
+    return null
+  })
+  ipcMain.handle('fetchMinecraftNews', async () => {
+    try {
+      const response = await fetch(
+        'https://net-secondary.web.minecraft-services.net/api/v1.0/es-es/search?pageSize=24&sortType=Recent&category=News'
+      )
+      if (!response.ok) throw new Error('Network response failed')
+      return await response.json()
+    } catch (err) {
+      log.error('[Main] Failed to fetch Minecraft News:', err)
+      return { entries: [] }
+    }
+  })
+
+  // Helper IPCs
+  ipcMain.on('open-external', (_, url: string) => {
+    if (url) shell.openExternal(url)
+  })
+
+  // Split migration IPCs
+  ipcMain.handle('check-legacy-migration', () => {
+    const completed = ConfigStore.get('migration.splitInstallerCompleted') === true
+    const skipped = ConfigStore.get('migration.splitInstallerSkipped') === true
+    return {
+      needsMigration: oldLauncherFound && !completed && !skipped
+    }
+  })
+
+  ipcMain.handle('download-legacy-launcher', async () => {
+    try {
+      const url = 'https://api.github.com/repos/rub3nnn/secrecy-launcher-releases/releases/latest'
+      const headers: HeadersInit = {
+        'User-Agent': 'Secrecy-Minecraft-Launcher'
+      }
+
+      log.info(`[Migration] Fetching latest release from: ${url}`)
+      const res = await fetch(url, { headers })
+      if (!res.ok) throw new Error(`GitHub API error: ${res.statusText}`)
+      const release = (await res.json()) as any
+
+      const asset = release.assets?.find((a: any) => a.name.endsWith('.exe'))
+      if (!asset) throw new Error('No executable installer (.exe) found in release.')
+
+      log.info(`[Migration] Found asset: ${asset.name}, URL: ${asset.browser_download_url}`)
+      const tempDir = app.getPath('temp')
+      const destPath = path.join(tempDir, asset.name)
+
+      const response = await fetch(asset.browser_download_url, {
+        headers: {
+          'User-Agent': 'Secrecy-Minecraft-Launcher'
+        }
+      })
+      if (!response.ok) throw new Error(`Download failed: ${response.statusText}`)
+
+      const totalSize = parseInt(response.headers.get('content-length') || '0', 10)
+      let downloadedSize = 0
+
+      const fileStream = fs.createWriteStream(destPath)
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('Failed to get download reader')
+
+      let lastProgressTime = Date.now()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        downloadedSize += value.length
+        fileStream.write(value)
+
+        const now = Date.now()
+        if (now - lastProgressTime > 150) {
+          const percent = (downloadedSize / totalSize) * 100
+          mainWindow?.webContents.send('download-legacy-progress', {
+            percent,
+            transferred: downloadedSize,
+            total: totalSize
+          })
+          lastProgressTime = now
+        }
+      }
+      await new Promise<void>((resolve, reject) => {
+        fileStream.on('finish', () => resolve())
+        fileStream.on('error', (err) => reject(err))
+        fileStream.end()
+      })
+
+      log.info(`[Migration] Download finished. Executing installer via shell: ${destPath}`)
+      await shell.openPath(destPath)
+
+      ConfigStore.set('migration.splitInstallerCompleted', true)
+      setTimeout(() => app.quit(), 500)
+      return { success: true }
+    } catch (err: any) {
+      log.error('[Migration] Split download failed:', err)
+      throw err
+    }
+  })
+
   createWindow()
 
-  app.on('activate', function () {
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
