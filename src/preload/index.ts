@@ -1,46 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import fs from 'fs'
-import path from 'path'
-import vdf from 'vdf-parser'
 import Store from 'electron-store'
 
-// ====== LÓGICA DE DETECCIÓN DE RUTA PERSONALIZADA (igual que en index) ======
-const customPath = 'D:\\SecrecyLauncher'
-const customConfigPath = path.join(customPath, 'config.json')
-let exception: boolean
+const userDataPath = ipcRenderer.sendSync('get-user-data-path')
+const defaultMinecraftPath = ipcRenderer.sendSync('get-default-minecraft-path')
+const store = new Store({ cwd: userDataPath })
 
-let store: Store
-let customDataPath: string | null = null
-
-if (fs.existsSync(customConfigPath)) {
-  // Usar la ruta personalizada
-  store = new Store({
-    cwd: customPath
-  })
-  customDataPath = customPath
-  console.log(`[Preload] Using custom data path: ${customPath}`)
-} else {
-  // Usar la ruta por defecto
-  store = new Store()
-  console.log(`[Preload] Using default data path (userData)`)
-}
-
-if (customDataPath !== null) {
-  exception = true
-} else {
-  exception = false
-}
-
-// Función helper para obtener la ruta de datos (igual que en index)
 function getDataPath(): string {
-  // En el preload no tenemos acceso directo a app.getPath('userData')
-  // pero el Store ya está configurado con la ruta correcta
-  return customDataPath || store.path.replace(/[/\\]config\.json$/, '')
+  return userDataPath
 }
-// ============================================================================
 
-// Custom APIs for renderer
+function getDefaultMinecraftPath(): string {
+  return defaultMinecraftPath
+}
+
 const api = {
   ipc: {
     send: (channel: string, data: any) => {
@@ -53,7 +26,7 @@ const api = {
           const data = args[0] ? JSON.parse(JSON.stringify(args[0])) : null
           callback(data)
         } catch (error) {
-          console.error('Error parsing IPC data:', error)
+          console.error('[Preload] Error parsing IPC data:', error)
           callback(null)
         }
       })
@@ -68,59 +41,6 @@ const api = {
   }
 }
 
-// Función para leer la imagen del avatar y convertirla a Base64
-function getSteamAvatar(steamId: string): string | null {
-  try {
-    const steamAvatarPath = path.join(
-      'C:\\Program Files (x86)\\Steam\\config\\avatarcache',
-      `${steamId}.png`
-    )
-
-    if (!fs.existsSync(steamAvatarPath)) {
-      console.error('Avatar file does not exist:', steamAvatarPath)
-      return null
-    }
-
-    // Leer la imagen como Buffer y convertirla a Base64
-    const imageBuffer = fs.readFileSync(steamAvatarPath)
-    const base64Image = imageBuffer.toString('base64')
-    return `data:image/png;base64,${base64Image}`
-  } catch (error) {
-    console.error('Error loading Steam avatar:', error)
-    return null
-  }
-}
-
-// Función para obtener datos del usuario de Steam
-function getSteamUserData() {
-  try {
-    const steamConfigPath = 'C:\\Program Files (x86)\\Steam\\config'
-    const vdfFilePath = path.join(steamConfigPath, 'loginusers.vdf')
-
-    const vdfContent = fs.readFileSync(vdfFilePath, 'utf-8')
-    const parsedData: any = vdf.parse(vdfContent)
-    const users = parsedData.users
-
-    for (const steamId in users) {
-      if (users[steamId].MostRecent === 1) {
-        return {
-          steamId: steamId,
-          accountName: users[steamId].AccountName,
-          personaName: users[steamId].PersonaName,
-          autoLogin: users[steamId].AllowAutoLogin === '1',
-          timestamp: new Date(parseInt(users[steamId].Timestamp) * 1000),
-          rawData: users[steamId]
-        }
-      }
-    }
-    return null
-  } catch (error) {
-    console.error('Error al obtener usuario de Steam:', error)
-    return null
-  }
-}
-
-// Exponer APIs al renderer
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', {
@@ -128,25 +48,14 @@ if (process.contextIsolated) {
       ...api
     })
 
-    contextBridge.exposeInMainWorld('steamAPI', {
-      getRecentUser: () => {
-        const user = getSteamUserData()
-        if (!user) return null
-
-        // Obtener el avatar del usuario
-        const avatar = getSteamAvatar(user.steamId)
-        return { ...user, avatar }
-      }
-    })
-
     contextBridge.exposeInMainWorld('storage', {
       get: (key: string) => store.get(key),
       set: (key: string, value: unknown) => store.set(key, value),
-      // Método adicional para obtener la ruta de datos actual
-      getDataPath: () => getDataPath()
+      delete: (key: string) => store.delete(key),
+      getDataPath: () => getDataPath(),
+      getDefaultMinecraftPath: () => getDefaultMinecraftPath()
     })
-    contextBridge.exposeInMainWorld('exception', exception)
   } catch (error) {
-    console.error('ContextBridge Error:', error)
+    console.error('[Preload] ContextBridge Error:', error)
   }
 }
