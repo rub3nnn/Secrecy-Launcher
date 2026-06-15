@@ -64,21 +64,21 @@ export function AppErrorDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[450px] p-0 overflow-hidden">
-        <div className={`${colors.bg} p-6 border-b ${colors.border}`}>
-          <div className="flex items-start">
+        <div className={`${colors.bg} p-6 border-b ${colors.border} w-full min-w-0`}>
+          <div className="flex items-start w-full min-w-0">
             <div
               className={`h-10 w-10 rounded-full bg-background/80 flex items-center justify-center ${colors.icon} mr-4 flex-shrink-0`}
             >
               {getSeverityIcon()}
             </div>
-            <div className="flex-1">
-              <h2 className={`text-xl font-semibold ${colors.text}`}>{title}</h2>
-              <p className="text-sm text-muted-foreground mt-1">{description}</p>
+            <div className="flex-1 min-w-0">
+              <h2 className={`text-xl font-semibold ${colors.text} truncate`}>{title}</h2>
+              <p className="text-sm text-muted-foreground mt-1 break-words">{description}</p>
             </div>
           </div>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 w-full min-w-0">
           {errorCode && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Código de error:</span>
