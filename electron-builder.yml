@@ -26,7 +26,6 @@ npmRebuild: false
 win:
   target:
     - nsis
-    - portable
   executableName: SecrecyMinecraft
   artifactName: ${name}-${version}.${ext}
   publish:

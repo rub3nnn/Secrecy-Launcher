@@ -1,9 +1,9 @@
-name: Build & Release
+name: Build & Publish Release
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -16,6 +16,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Recreate Verified Tag
+        shell: bash
+        run: |
+          echo "Recreando el tag ${{ github.ref_name }} para obtener firma verificada..."
+          curl -s -X DELETE \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/git/refs/tags/${{ github.ref_name }}
+
+          sleep 2
+
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/git/refs \
+            -d "{\"ref\":\"refs/tags/${{ github.ref_name }}\",\"sha\":\"${{ github.sha }}\"}"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -25,22 +42,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Build Frontend
+        run: npm run build --if-present
 
-      - name: Build Electron app
-        run: npx electron-builder --win --publish=never
+      # Cambiamos --publish=never por --publish=always para que electron-builder
+      # se encargue de subir TODO correctamente a GitHub Releases
+      - name: Build & Publish Electron App
+        run: npx electron-builder --win --publish=always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('pre-{0}', github.sha) }}
-          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('Pre-release {0}', github.sha) }}
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-          files: |
-            dist/*.exe
-            dist/*.yml
-            dist/*.yaml
-          token: ${{ secrets.GITHUB_TOKEN }}
