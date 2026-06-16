@@ -3,7 +3,7 @@ name: Build & Publish Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*' # Solo se activa cuando tú subes manualmente el tag desde tu PC
 
 permissions:
   contents: write
@@ -16,38 +16,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Recreate Verified Tag
-        shell: bash
-        run: |
-          echo "Recreando el tag ${{ github.ref_name }} para obtener firma verificada..."
-          curl -s -X DELETE \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/git/refs/tags/${{ github.ref_name }}
-
-          sleep 2
-
-          curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/git/refs \
-            -d "{\"ref\":\"refs/tags/${{ github.ref_name }}\",\"sha\":\"${{ github.sha }}\"}"
-
+      # Configuramos Node y caché
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
+      # Instalamos las dependencias de forma limpia
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Frontend
-        run: npm run build --if-present
-
-      # Cambiamos --publish=never por --publish=always para que electron-builder
-      # se encargue de subir TODO correctamente a GitHub Releases
+      # Ejecutamos tu script de electron-vite que compila el frontend,
+      # el backend y le pasa los comandos correctos a electron-builder para publicar.
       - name: Build & Publish Electron App
-        run: npx electron-builder --win --publish=always
+        run: npm run build -- --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
