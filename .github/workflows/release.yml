@@ -28,8 +28,8 @@ jobs:
         run: npm ci
 
       # Ejecutamos tu script de electron-vite que compila el frontend,
-      # el backend y le pasa los comandos correctos a electron-builder para publicar.
+      # el backend y luego llamamos a electron-builder para empaquetar y publicar.
       - name: Build & Publish Electron App
-        run: npm run build -- --win --publish always
+        run: npm run build && npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
