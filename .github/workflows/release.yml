@@ -1,9 +1,9 @@
-name: Build & Release
+name: Build & Publish Release
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
+    tags:
+      - 'v*' # El bot SOLO se despierta si subes un tag como v1.1.0, v2.0.1, etc.
 
 permissions:
   contents: write
@@ -25,22 +25,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Build Frontend
+        run: npm run build --if-present
 
-      - name: Build Electron app
-        run: npx electron-builder --win --publish=never
+      # Cambiamos --publish=never por --publish=always para que electron-builder
+      # se encargue de subir TODO correctamente a GitHub Releases
+      - name: Build & Publish Electron App
+        run: npx electron-builder --win --publish=always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('pre-{0}', github.sha) }}
-          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('Pre-release {0}', github.sha) }}
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-          files: |
-            dist/*.exe
-            dist/*.yml
-            dist/*.yaml
-          token: ${{ secrets.GITHUB_TOKEN }}
