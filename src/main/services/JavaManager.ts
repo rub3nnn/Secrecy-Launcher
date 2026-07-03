@@ -383,7 +383,7 @@ export const JavaManager = {
     const extractPath = path.join(getDataPath(), 'java', folderName)
 
     const workerPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'resources/javaWorker.js')
+      ? path.join(process.resourcesPath, 'app.asar.unpacked/resources/javaWorker.js')
       : path.join(__dirname, '../../resources/javaWorker.js')
 
     return new Promise((resolve, reject) => {
