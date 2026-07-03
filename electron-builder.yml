@@ -13,6 +13,7 @@ files:
 
 asarUnpack:
   - resources/**
+  - node_modules/adm-zip/**
 
 extraResources:
   - from: resources/icon.png
